@@ -16,6 +16,8 @@ export const Attachment = z.object({
   filename: z.string(),
   mimeType: z.string(),
   sizeBytes: z.bigint(),
+  /** 'pending' until the client confirms upload + the server re-verifies; 'ready' after. */
+  status: z.enum(["pending", "ready"]).default("pending"),
   uploadedBy: z.string().uuid(),
   createdAt: z.date(),
 });

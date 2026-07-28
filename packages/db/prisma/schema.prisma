@@ -318,6 +318,9 @@ model Attachment {
   filename    String
   mimeType    String   @map("mime_type")
   sizeBytes   BigInt   @map("size_bytes")
+  // 'pending' until the client confirms upload + server re-verifies (HEAD); 'ready' after.
+  // Abandoned uploads (left pending) can be swept by a worker job.
+  status      String   @default("pending") // 'pending' | 'ready'
   uploadedById String  @map("uploaded_by") @db.Uuid
   createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
 

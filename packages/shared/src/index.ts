@@ -17,3 +17,4 @@ export * from "./attachments.js";
 export * from "./search.js";
 export * from "./editor.js";
 export * from "./url-safety.js";
+export * from "./attachment-policy.js";
