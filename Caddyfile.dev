@@ -1,0 +1,36 @@
+# Dev reverse proxy — mirrors the prod topology (web + realtime behind one
+# origin) so the session cookie flows on the WS upgrade and the realtime origin
+# check (🔒 0010 #4) passes. Run via docker compose (the caddy service).
+#
+# Listens on :3000 (the canonical dev port = APP_URL). Routes:
+#   /collab/*  → realtime WS server (host.docker.internal:4321)
+#   /*         → Next.js web app (host.docker.internal:3001)
+#
+# NOTE: because Caddy occupies :3000, run `pnpm dev` for the web app on :3001
+# (set PORT=3001 or pass -p 3001). APP_URL stays http://localhost:3000.
+
+{
+	# Dev only: disable auto-HTTPS, no admin API.
+	auto_https off
+	admin off
+}
+
+:3000 {
+	# Log to stdout for dev visibility.
+	log {
+		output stdout
+		format console
+	}
+
+	# WebSocket + HTTP for the realtime collaboration server.
+	@collab path /collab /collab/*
+	reverse_proxy @collab host.docker.internal:4321 {
+		# Flush immediately so WS frames / SSE aren't buffered.
+		flush_interval -1
+	}
+
+	# Everything else → the Next.js web app (running on the host at :3001).
+	reverse_proxy host.docker.internal:3001 {
+		flush_interval -1
+	}
+}

@@ -40,6 +40,15 @@ const envSchema = z.object({
 
   /** Port the realtime WebSocket server binds to. */
   REALTIME_PORT: z.coerce.number().int().positive().default(4321),
+  /**
+   * The WebSocket URL the BROWSER editor connects to (ticket 0005). In dev this
+   * points at the realtime process directly; in prod it's a relative path
+   * mapped by the reverse proxy so the session cookie flows same-origin and the
+   * WS origin check (🔒 0010 #4) passes. Must resolve to the {@link APP_URL}
+   * origin (via proxy) for the cookie + origin check to work.
+   * @example "/collab" (dev + prod behind proxy, same-origin) | "ws://rt:4321"
+   */
+  NEXT_PUBLIC_REALTIME_WS_URL: z.string().default("/collab"),
 
   /** ---------- Database (ticket 0003) ---------- */
   DATABASE_URL: z

@@ -51,6 +51,23 @@ services:
       mc anonymous set download local/opennote || true
       "
 
+  # Dev reverse proxy — mirrors prod topology (web + realtime behind one origin
+  # on :3000) so the session cookie flows on the WS upgrade and the realtime
+  # origin check (🔒 0010 #4) passes. The web app + realtime server run on the
+  # host via `pnpm dev` (web on :3001, realtime on :4321); Caddy reaches them
+  # via host.docker.internal. See Caddyfile.dev.
+  caddy:
+    image: caddy:2-alpine
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./Caddyfile.dev:/etc/caddy/Caddyfile:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
 volumes:
   postgres_data:
   minio_data:
