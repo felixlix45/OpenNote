@@ -24,6 +24,7 @@
  */
 import { Server } from "@hocuspocus/server";
 import { Database } from "@hocuspocus/extension-database";
+import * as Y from "yjs";
 import { loadEnv, type Env } from "@opennote/config/env";
 import { prisma, type PrismaClient, getPageDocState, upsertPageDocState } from "@opennote/db";
 import {
@@ -94,7 +95,7 @@ export function createRealtimeServer(deps: ServerDeps): Server {
       const state = await getPageDocState(prisma, pageId);
       return state ? new Uint8Array(state) : null;
     },
-    store: async ({ documentName, state }) => {
+    store: async ({ documentName, state, document }) => {
       const pageId = parseDocName(documentName);
       if (!pageId) return;
       // 🔒 REALTIME_DOC_MAX_BYTES bounds bytea growth (reject oversize writes).
@@ -106,6 +107,20 @@ export function createRealtimeServer(deps: ServerDeps): Server {
         return;
       }
       await upsertPageDocState(prisma, pageId, buf, env.REALTIME_DOC_MAX_BYTES);
+
+      // Refresh the search mirrors (body_text + title) from the Y-doc, in the
+      // same debounced save path (ticket 0008 #3). The generated search_tsv
+      // auto-follows. Title = first non-empty text block; body_text = full text.
+      const { title, bodyText } = extractText(document);
+      await prisma.page.update({
+        where: { id: pageId },
+        data: {
+          title: title.slice(0, 512),
+          bodyText: bodyText.slice(0, 200000), // bound the FTS payload
+        },
+      }).catch(() => {
+        // A page row disappearing mid-save (delete race) is non-fatal.
+      });
     },
   });
 
@@ -249,6 +264,38 @@ function main() {
       console.log(`[realtime] ${signal} received, flushing + shutting down…`);
       void server.destroy().then(() => process.exit(0));
     });
+  }
+}
+
+/**
+ * Extract plain text from a Y.Doc for the search mirrors (ticket 0008 #3).
+ *
+ * BlockNote stores blocks in the `document-store` XML fragment as a ProseMirror
+ * doc. We walk the fragment's text nodes to build a flat plain-text body, and
+ * take the first non-empty line as the title. This is intentionally a lossy
+ * projection for FTS — search finds the page, not the exact block.
+ */
+function extractText(document: Y.Doc): { title: string; bodyText: string } {
+  try {
+    const fragment = document.getXmlFragment("document-store");
+    // Serialize to a Delta-like text via the fragment's toString, then clean.
+    // Yjs XML fragments expose text via a recursive walk.
+    const lines: string[] = [];
+    for (let i = 0; i < fragment.length; i++) {
+      const node = fragment.get(i);
+      if (node instanceof Y.XmlText) {
+        const t = node.toString().trim();
+        if (t) lines.push(t);
+      } else if (node instanceof Y.XmlElement) {
+        const t = node.toString().trim();
+        if (t) lines.push(t);
+      }
+    }
+    const bodyText = lines.join("\n");
+    const title = lines[0] ?? "";
+    return { title, bodyText };
+  } catch {
+    return { title: "", bodyText: "" };
   }
 }
 
