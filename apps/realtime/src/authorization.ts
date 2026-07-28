@@ -14,7 +14,7 @@
  * Doc-name is the ONLY trusted page identity (🔒 req #3): `pageId` here came
  * exclusively from {@link parseDocName}, never from another client channel.
  */
-import type { PrismaClient } from "@opennote/db";
+import { findPageById, type PrismaClient } from "@opennote/db";
 import type { PermissionEngine } from "@opennote/auth";
 import type { EffectivePermission } from "@opennote/shared";
 
@@ -33,10 +33,8 @@ export async function resolveAuthorization(
   permissions: PermissionEngine,
   args: { userId: string; pageId: string },
 ): Promise<ResolvedAuthorization | null> {
-  const page = await db.page.findFirst({
-    where: { id: args.pageId, deletedAt: null },
-    select: { id: true, workspaceId: true },
-  });
+  // Through the repository (soft-delete filtered) — review finding #10.
+  const page = await findPageById(db, args.pageId);
   if (!page) return null;
 
   const result = await permissions.effective({

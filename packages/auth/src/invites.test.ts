@@ -32,21 +32,6 @@ describe("invite tokens — cryptographic guarantees (HIGH #5)", () => {
     expect(a).not.toEqual(b);
   });
 
-  it("safeEqualToken is true for identical strings", () => {
-    const t = generateInviteToken();
-    expect(safeEqualToken(t, t)).toBe(true);
-  });
-
-  it("safeEqualToken is false for different strings", () => {
-    const a = generateInviteToken();
-    const b = generateInviteToken();
-    expect(safeEqualToken(a, b)).toBe(false);
-  });
-
-  it("safeEqualToken is false for different-length strings (no throw)", () => {
-    expect(safeEqualToken("short", "a-much-longer-token-value")).toBe(false);
-  });
-
   it("INVITE_TTL_MS is 7 days", () => {
     expect(INVITE_TTL_MS).toBe(7 * 24 * 60 * 60 * 1000);
   });

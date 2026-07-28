@@ -47,16 +47,20 @@ export async function GET(_request: Request, context: RouteContext) {
   }
 
   // Permission gate: can_read on the page.
-  const canRead = await permissions.canRead({
+  // Run effective() once + derive both canRead and canWrite from the single
+  // result (avoids running the CTE twice — review finding #8).
+  const perm = await permissions.effective({
     workspaceId: page.workspaceId,
     userId: user.id,
     resourceType: "page",
     resourceId: page.id,
   });
+  const canRead = perm.level !== "none";
   if (!canRead) {
     // Don't leak existence → 404 (not 403) to unauthorized users.
     return NextResponse.json({ error: "not_found" }, { status: 404 });
   }
+  const canWrite = perm.level === "editor" || perm.level === "manage";
 
   // Only now (authorized) load the Y-doc body bytes.
   const doc = await db.pageDoc.findUnique({
@@ -73,12 +77,7 @@ export async function GET(_request: Request, context: RouteContext) {
       icon: page.icon,
       // Y-doc state as base64; the client decodes to a Uint8Array for Yjs.
       docStateBase64,
-      canWrite: await permissions.canWrite({
-        workspaceId: page.workspaceId,
-        userId: user.id,
-        resourceType: "page",
-        resourceId: page.id,
-      }),
+      canWrite,
     },
   });
 }

@@ -19,7 +19,6 @@ export { createPrismaPermissionStore } from "./store-prisma.js";
 
 export {
   generateInviteToken,
-  safeEqualToken,
   acceptInvite,
   INVITE_TTL_MS,
 } from "./invites.js";

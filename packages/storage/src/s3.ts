@@ -9,8 +9,11 @@
  *   - **inline allowlist**: only png/jpg/gif/webp render inline; everything
  *     else (SVG, HTML, PDF-with-script, …) is forced to `Content-Disposition:
  *     attachment` (stored-XSS mitigation).
- *   - **presigned-PUT type/size binding**: the signed PUT binds Content-Type +
- *     Content-Length where the provider supports it; on `/complete` the object
+ *   - **presigned-PUT + HEAD re-verify**: the signed PUT does NOT bind
+ *     Content-Type/Length (binding ContentLength caused SignatureDoesNotMatch
+ *     with MinIO). Instead, the client uploads, then `/complete` HEADs the
+ *     object and verifies MIME + size match the declared values (the authoritative
+ *     check); on mismatch the object is deleted + the row rejected.
  *     is HEADed and MIME+size re-verified before the attachment row is activated.
  */
 import {

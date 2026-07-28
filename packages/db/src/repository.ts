@@ -257,6 +257,8 @@ export interface SearchPagesArgs {
   userId: string;
   query: string;
   maxResults: number;
+  /** Nesting-depth cap forwarded to the CTE (env MAX_NESTING_DEPTH). */
+  maxNestingDepth: number;
 }
 
 /**
@@ -296,7 +298,7 @@ export async function searchPages(db: PrismaClient, args: SearchPagesArgs) {
                ${args.userId}::uuid,
                'page',
                p.id,
-               32
+               ${args.maxNestingDepth}::int
              ) IN ('reader', 'commenter', 'editor')
          )
     )

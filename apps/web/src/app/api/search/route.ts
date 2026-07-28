@@ -44,6 +44,7 @@ export async function GET(request: Request) {
     userId: user.id,
     query: parsed.data.query,
     maxResults: env.SEARCH_MAX_RESULTS,
+    maxNestingDepth: env.MAX_NESTING_DEPTH,
   });
 
   return NextResponse.json({

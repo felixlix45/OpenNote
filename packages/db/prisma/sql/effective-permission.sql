@@ -102,7 +102,11 @@ BEGIN
     -- Includes the workspace-root sentinel (folder, NULL) so the implicit
     -- all-members -> Editor share is picked up.
     path_resources AS (
-      SELECT 'page'::text AS type, p_resource_id AS id WHERE p_resource_type = 'page'
+      -- The target page: only include if it's NOT trashed (🔒 soft-delete discipline —
+      -- the CTE is the cheapest place to enforce this, not per-caller).
+      SELECT 'page'::text AS type, p_resource_id AS id
+       WHERE p_resource_type = 'page'
+         AND EXISTS (SELECT 1 FROM pages WHERE id = p_resource_id AND deleted_at IS NULL)
       UNION ALL
       SELECT 'page', id FROM page_ancestors WHERE id <> p_resource_id
       UNION ALL
