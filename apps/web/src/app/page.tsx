@@ -22,8 +22,7 @@ export default async function Home() {
         </p>
       ) : (
         <p>
-          <Link href="/api/auth/sign-up">Create an account</Link> ·{" "}
-          <Link href="/api/auth/sign-in">Sign in</Link>
+          <Link href="/auth">Create an account / Sign in</Link>
         </p>
       )}
       <hr
