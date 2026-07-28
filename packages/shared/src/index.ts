@@ -15,3 +15,5 @@ export * from "./pages.js";
 export * from "./shares.js";
 export * from "./attachments.js";
 export * from "./search.js";
+export * from "./editor.js";
+export * from "./url-safety.js";
