@@ -41,18 +41,21 @@ async function main() {
     });
   }
 
-  // Owner membership (idempotent).
-  await prisma.workspaceMember.upsert({
-    where: { workspaceId_userId: { workspaceId: workspace.id, userId: owner.id } },
-    update: { role: "owner" },
-    create: { workspaceId: workspace.id, userId: owner.id, role: "owner" },
-  });
-
-  // All-members group (the trigger would sync it, but seed it explicitly too).
+  // All-members group — MUST exist before members are inserted so the
+  // keep_all_members_in_sync trigger populates group_members for non-guest
+  // roles (the trigger no-ops if the group isn't seeded yet).
   const allMembers = await prisma.group.upsert({
     where: { workspaceId_isAllMembers: { workspaceId: workspace.id, isAllMembers: true } },
     update: {},
     create: { workspaceId: workspace.id, name: "All Members", isAllMembers: true },
+  });
+
+  // Owner membership (idempotent). The trigger adds the owner to all-members;
+  // the explicit groupMember upsert below is belt-and-suspenders.
+  await prisma.workspaceMember.upsert({
+    where: { workspaceId_userId: { workspaceId: workspace.id, userId: owner.id } },
+    update: { role: "owner" },
+    create: { workspaceId: workspace.id, userId: owner.id, role: "owner" },
   });
   await prisma.groupMember.upsert({
     where: { groupId_userId: { groupId: allMembers.id, userId: owner.id } },

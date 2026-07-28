@@ -110,6 +110,11 @@ BEGIN
       UNION ALL
       SELECT 'folder', NULL::uuid  -- workspace-root sentinel
     )
+  -- Join shares against the path with NULL-safe equality (IS NOT DISTINCT
+  -- FROM). A plain `IN` would fail to match the workspace-root sentinel: the
+  -- sentinel share has resource_id = NULL, and `NULL IN (NULL)` is NULL (not
+  -- true), so the open-workspace root share would never apply. NULL-safe
+  -- equality treats two NULLs as equal.
   SELECT max(
     CASE s.level
       WHEN 'editor'    THEN 3
@@ -120,8 +125,10 @@ BEGIN
   )
   INTO result
   FROM shares s
+  JOIN path_resources pr
+    ON s.resource_type = pr.type
+   AND s.resource_id IS NOT DISTINCT FROM pr.id
   WHERE s.workspace_id = p_workspace_id                       -- 🔒 tenant guard
-    AND (s.resource_type, s.resource_id) IN (SELECT type, id FROM path_resources)
     AND ( s.principal_user_id  = p_user_id
        OR s.principal_group_id IN (SELECT group_id FROM groups_of_u) );
 

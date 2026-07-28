@@ -16,7 +16,7 @@ BEGIN
    WHERE workspace_id = COALESCE(NEW.workspace_id, OLD.workspace_id)
      AND is_all_members = true;
   IF g_id IS NULL THEN
-    RETURN COALESCE(NEW, OLD); -- all-members group not yet seeded; skip
+    RETURN COALESCE(NEW, OLD); -- all-members group not yet seeded; backfilled on group create
   END IF;
 
   IF (TG_OP = 'INSERT' OR TG_OP = 'UPDATE') AND NEW.role <> 'guest' THEN
@@ -38,3 +38,27 @@ $$ LANGUAGE plpgsql;
 CREATE TRIGGER workspace_members_all_members_sync
   AFTER INSERT OR UPDATE OR DELETE ON workspace_members
   FOR EACH ROW EXECUTE FUNCTION keep_all_members_in_sync();
+
+-- backfill_all_members_on_group_create: when the all-members group is created
+-- AFTER members already exist (e.g. a workspace whose members were seeded
+-- before the group), add every existing non-guest member. This closes the
+-- ordering gap that keep_all_members_in_sync can't cover on its own (it no-ops
+-- when the group isn't seeded yet). With both triggers, group membership is
+-- correct regardless of insert order.
+CREATE OR REPLACE FUNCTION backfill_all_members_on_group_create() RETURNS trigger AS $$
+BEGIN
+  IF NEW.is_all_members = true THEN
+    INSERT INTO group_members (group_id, user_id)
+    SELECT NEW.id, wm.user_id
+      FROM workspace_members wm
+     WHERE wm.workspace_id = NEW.workspace_id
+       AND wm.role <> 'guest'
+    ON CONFLICT (group_id, user_id) DO NOTHING;
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER groups_all_members_backfill
+  AFTER INSERT ON groups
+  FOR EACH ROW EXECUTE FUNCTION backfill_all_members_on_group_create();
