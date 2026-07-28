@@ -9,7 +9,7 @@
  * Better Auth's password hashing — it must never run against a production DB.
  * Guarded by a NODE_ENV check.
  */
-import { PrismaClient } from "../src/generated/client/client.js";
+import { PrismaClient } from "../src/generated/client/index.js";
 
 if (process.env.NODE_ENV === "production") {
   throw new Error("Seed script refuses to run in production (it creates known creds).");
@@ -88,7 +88,25 @@ async function main() {
     });
   }
 
-  // A sample page at the workspace root.
+  // A root folder for the workspace (pages need exactly one tree parent — the
+  // CHECK (folder_id IS NULL) <> (parent_page_id IS NULL) forbids a parentless
+  // page). The workspace root sentinel (resource_id NULL) is for *shares*,
+  // not for content placement.
+  const rootFolder = await prisma.folder.findFirst({
+    where: { workspaceId: workspace.id, parentId: null, name: "Getting Started" },
+  });
+  const folder =
+    rootFolder ??
+    (await prisma.folder.create({
+      data: {
+        workspaceId: workspace.id,
+        parentId: null,
+        name: "Getting Started",
+        createdById: owner.id,
+      },
+    }));
+
+  // A sample page in the root folder.
   const existingPage = await prisma.page.findFirst({
     where: { workspaceId: workspace.id, title: "Welcome to OpenNote" },
   });
@@ -96,10 +114,10 @@ async function main() {
     await prisma.page.create({
       data: {
         workspaceId: workspace.id,
-        folderId: null,
-        parentPageId: null,
+        folderId: folder.id,
+        parentPageId: null, // top-level page in a folder (exactly-one-parent)
         title: "Welcome to OpenNote",
-        bodyText: "This is the first page. The block editor lands next.",
+        bodyText: "This is the first page. The block editor is live.",
         createdById: owner.id,
       },
     });
