@@ -314,6 +314,57 @@ export async function searchPages(db: PrismaClient, args: SearchPagesArgs) {
 }
 
 // ---------------------------------------------------------------------------
+// Member search — for @user mention typeahead (🔒 0005 #3: permission-scoped).
+// ---------------------------------------------------------------------------
+
+export interface SearchMembersArgs {
+  workspaceId: string;
+  /** The user running the query — must themselves be a member to see anyone. */
+  userId: string;
+  query: string;
+  maxResults: number;
+}
+
+/**
+ * Search a workspace's members + groups by name/email for the @user mention
+ * typeahead (🔒 SECURITY-REVIEW 0005 #3). Permission-scoped: the caller must be
+ * a member of the workspace (guests see only members of workspaces they're in;
+ * the membership check below is the gate). No cross-tenant name leaks.
+ *
+ * Returns members (not groups) for v1 — a member mention resolves to a user.
+ * Group mentions are a post-v1 concern (the share model targets groups, but the
+ * mention typeahead is person-oriented).
+ */
+export async function searchMembers(db: PrismaClient, args: SearchMembersArgs) {
+  // 🔒 Permission gate: the caller must be a member of this workspace. A
+  // non-member gets nothing (no name leak across the tenant boundary).
+  const membership = await db.workspaceMember.findUnique({
+    where: {
+      workspaceId_userId: { workspaceId: args.workspaceId, userId: args.userId },
+    },
+    select: { role: true },
+  });
+  if (!membership) return [];
+
+  const pattern = `%${args.query.replace(/[%_]/g, (m) => "\\" + m)}%`;
+  const rows = await db.$queryRaw<
+    Array<{ id: string; name: string | null; email: string; role: string }>
+  >`
+    SELECT u.id, u.name, u.email, wm.role
+      FROM workspace_members wm
+      JOIN users u ON u.id = wm.user_id
+     WHERE wm.workspace_id = ${args.workspaceId}::uuid
+       AND (u.name ILIKE ${pattern} ESCAPE '\' OR u.email ILIKE ${pattern} ESCAPE '\')
+     ORDER BY
+       CASE WHEN u.email ILIKE ${pattern} ESCAPE '\' THEN 0 ELSE 1 END,
+       u.name NULLS LAST
+     LIMIT ${args.maxResults}::int
+  `;
+  return rows;
+}
+
+
+// ---------------------------------------------------------------------------
 // Page docs (Y-doc state) — ticket 0004.
 // ---------------------------------------------------------------------------
 

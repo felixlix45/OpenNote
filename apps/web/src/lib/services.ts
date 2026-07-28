@@ -14,6 +14,8 @@ import {
   getPage,
   listFolderChildren,
   upsertPageDocState,
+  searchMembers,
+  searchPages,
   PrismaClient,
 } from "@opennote/db";
 import {
@@ -39,5 +41,13 @@ export const smtp = createSmtpService(env);
 
 // Re-export the repository content accessors so route handlers go through the
 // soft-delete + tenant-scoped layer (🔒 SECURITY-REVIEW) instead of db.page.*.
-export { createPage, findPageById, getPage, listFolderChildren, upsertPageDocState };
+export {
+  createPage,
+  findPageById,
+  getPage,
+  listFolderChildren,
+  upsertPageDocState,
+  searchMembers,
+  searchPages,
+};
 export { env };
