@@ -45,6 +45,8 @@ export default function PageEditor() {
       .then((d) => {
         setData(d.page);
         setTitle(d.page.title);
+        // Record the workspace so the global cmd+K palette can scope search.
+        sessionStorage.setItem("opennote:workspaceId", d.page.workspaceId);
       })
       .catch((e) => setError(String(e)));
   }, [params.pageId]);
