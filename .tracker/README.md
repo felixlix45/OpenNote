@@ -13,7 +13,7 @@ The canonical artifact is **[0001 — the map](./issues/0001.md)**.
 | [0004](./issues/0004.md) | Real-time layer: Hocuspocus + Yjs persistence, auth hooks, update strategy | `research` | **closed** | — |
 | [0005](./issues/0005.md) | Block editor scope: v1 block types, nested-page blocks, slash menu | `grilling` | open | — |
 | [0006](./issues/0006.md) | Auth: library choice (Lucia vs Auth.js), identity scope, workspace onboarding | `grilling` | open | — |
-| [0007](./issues/0007.md) | Attachments: storage provider, quotas, access control, upload flow | `grilling` | open | — *(unblocked)* |
+| [0007](./issues/0007.md) | Attachments: storage provider, quotas, access control, upload flow | `grilling` | **closed** | — |
 | [0008](./issues/0008.md) | Search: Postgres FTS mechanics, freshness, cmd+K scope | `grilling` | **closed** | — |
 | [0009](./issues/0009.md) | Monorepo & project structure: packages, apps, tooling, env config | `grilling` | open | — |
 | [0010](./issues/0010.md) | Realtime authorization: gating Hocuspocus connections & doc loads | `grilling` | open | — *(unblocked)* |
@@ -22,7 +22,6 @@ The canonical artifact is **[0001 — the map](./issues/0001.md)**.
 
 - **0005** Block editor scope
 - **0006** Auth: library choice
-- **0007** Attachments
 - **0009** Monorepo & project structure
 - **0010** Realtime authorization
 
