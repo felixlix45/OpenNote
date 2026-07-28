@@ -15,13 +15,12 @@ The canonical artifact is **[0001 — the map](./issues/0001.md)**.
 | [0006](./issues/0006.md) | Auth: library choice (Lucia vs Auth.js), identity scope, workspace onboarding | `grilling` | **closed** | — |
 | [0007](./issues/0007.md) | Attachments: storage provider, quotas, access control, upload flow | `grilling` | **closed** | — |
 | [0008](./issues/0008.md) | Search: Postgres FTS mechanics, freshness, cmd+K scope | `grilling` | **closed** | — |
-| [0009](./issues/0009.md) | Monorepo & project structure: packages, apps, tooling, env config | `grilling` | open | — |
+| [0009](./issues/0009.md) | Monorepo & project structure: packages, apps, tooling, env config | `grilling` | **closed** | — |
 | [0010](./issues/0010.md) | Realtime authorization: gating Hocuspocus connections & doc loads | `grilling` | open | — *(unblocked)* |
 
 ## Frontier (open, unblocked, unclaimed)
 
-- **0009** Monorepo & project structure
-- **0010** Realtime authorization
+- **0010** Realtime authorization *(the last open ticket)*
 
 > All remaining tickets are unblocked — **no blockers left on the map.**
 
