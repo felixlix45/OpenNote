@@ -8,6 +8,12 @@ The canonical artifact is **[0001 — the map](./issues/0001.md)**.
 | ID | Title | Type | Status | Blocked by |
 |----|-------|------|--------|------------|
 | [0001](./issues/0001.md) | **MAP** — OpenNote v1 build-ready spec | `wayfinder:map` | **closed** | — |
+
+> 🔒 **Security review:** [`research/SECURITY-REVIEW.md`](./research/SECURITY-REVIEW.md) —
+> threat-model over all 9 decisions. 5 HIGH spec-gaps folded into tickets
+> 0003/0005/0006/0007/0010 as **🔒 Security requirements** (mandatory);
+> ~18 MEDIUM hardening items listed. Standing preference: always consider
+> security when planning anything.
 | [0002](./issues/0002.md) | Permission & sharing model: inheritance, roles, groups, overrides | `grilling` | **closed** | — |
 | [0003](./issues/0003.md) | Data model: relational schema for workspaces, groups, folders, pages, attachments, RBAC | `grilling` | **closed** | — |
 | [0004](./issues/0004.md) | Real-time layer: Hocuspocus + Yjs persistence, auth hooks, update strategy | `research` | **closed** | — |
