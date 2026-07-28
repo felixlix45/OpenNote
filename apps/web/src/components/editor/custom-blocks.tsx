@@ -11,10 +11,15 @@
  * (defense in depth — the editor schema alone isn't trusted). A non-allowlisted
  * URL or non-https scheme renders nothing, never the raw iframe.
  */
-import { BlockNoteSchema, defaultBlockSpecs } from "@blocknote/core";
+import {
+  BlockNoteSchema,
+  defaultBlockSpecs,
+  defaultInlineContentSpecs,
+} from "@blocknote/core";
 import { createReactBlockSpec } from "@blocknote/react";
 import type { ReactNode } from "react";
 import { resolveEmbed, buildEmbedSandbox, sanitizeUrl } from "@opennote/shared";
+import { Mention } from "./mention-inline-content";
 
 // ---------------------------------------------------------------------------
 // Callout — an emphasized note box with an emoji icon + color.
@@ -265,6 +270,10 @@ export function buildEditorSchema() {
       toggle: Toggle(),
       embed: Embed(),
       subpage: SubPage(),
+    },
+    inlineContentSpecs: {
+      ...defaultInlineContentSpecs,
+      mention: Mention,
     },
   });
 }
