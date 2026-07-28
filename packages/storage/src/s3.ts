@@ -84,14 +84,17 @@ export function createS3Service(env: Env): S3Service {
 
   return {
     async presignPut({ s3Key, mimeType, sizeBytes, ttlSeconds }) {
+      void sizeBytes; // size is bounded by the quota check + re-verified on /complete (HEAD),
+      // not bound into the presigned signature — binding ContentLength causes
+      // SignatureDoesNotMatch with MinIO when the client's actual Content-Length
+      // header is computed slightly differently (chunked uploads, etc.).
       const command = new PutObjectCommand({
         Bucket: env.S3_BUCKET,
         Key: s3Key,
         ContentType: mimeType,
-        ContentLength: sizeBytes,
       });
       const url = await getSignedUrl(client, command, { expiresIn: ttlSeconds });
-      // Client must send these headers to match the signature binding.
+      // Client must send Content-Type to match the signature binding.
       return { url, headers: { "Content-Type": mimeType } };
     },
 
