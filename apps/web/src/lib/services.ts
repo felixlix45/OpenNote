@@ -18,6 +18,10 @@ import {
   searchPages,
   workspaceAttachmentBytes,
   getAttachment,
+  createShare,
+  listShares,
+  deleteShare,
+  notifyPermChange,
   PrismaClient,
 } from "@opennote/db";
 import {
@@ -53,5 +57,9 @@ export {
   searchPages,
   workspaceAttachmentBytes,
   getAttachment,
+  createShare,
+  listShares,
+  deleteShare,
+  notifyPermChange,
 };
 export { env };

@@ -390,6 +390,68 @@ export async function getAttachment(db: PrismaClient, attachmentId: string) {
   return db.attachment.findUnique({ where: { id: attachmentId } });
 }
 
+// ---------------------------------------------------------------------------
+// Shares (ticket 0002 — the ACL management surface).
+// ---------------------------------------------------------------------------
+
+/**
+ * Create a share. Caller must have already verified owner/admin (only they can
+ * create shares). 🔒 HIGH #1: asserts the target resource belongs to the
+ * workspace before inserting.
+ */
+export async function createShare(
+  db: PrismaClient,
+  args: {
+    workspaceId: string;
+    resourceType: ResourceType;
+    resourceId: string | null;
+    principalUserId: string | null;
+    principalGroupId: string | null;
+    level: string;
+    createdById: string;
+  },
+) {
+  // 🔒 HIGH #1: the resource must belong to this workspace.
+  if (args.resourceId !== null) {
+    const ok = await assertResourceInWorkspace(
+      db,
+      args.workspaceId,
+      args.resourceType,
+      args.resourceId,
+    );
+    if (!ok) throw new Error("Resource not found in workspace.");
+  }
+  return db.share.create({
+    data: {
+      workspaceId: args.workspaceId,
+      resourceType: args.resourceType,
+      resourceId: args.resourceId,
+      principalUserId: args.principalUserId,
+      principalGroupId: args.principalGroupId,
+      level: args.level,
+      createdById: args.createdById,
+    },
+  });
+}
+
+/** List all shares on a resource (workspace-scoped). */
+export async function listShares(
+  db: PrismaClient,
+  workspaceId: string,
+  resourceType: ResourceType,
+  resourceId: string | null,
+) {
+  return db.share.findMany({
+    where: { workspaceId, resourceType, resourceId },
+    orderBy: { createdAt: "desc" },
+  });
+}
+
+/** Delete a share by id (workspace-scoped — HIGH #1). */
+export async function deleteShare(db: PrismaClient, workspaceId: string, shareId: string) {
+  return db.share.deleteMany({ where: { id: shareId, workspaceId } });
+}
+
 
 // ---------------------------------------------------------------------------
 // Page docs (Y-doc state) — ticket 0004.
