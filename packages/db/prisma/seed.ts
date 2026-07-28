@@ -10,20 +10,61 @@
  * Guarded by a NODE_ENV check.
  */
 import { PrismaClient } from "../src/generated/client/index.js";
+import { randomBytes, scrypt } from "node:crypto";
+import { promisify } from "node:util";
+
+const scryptAsync = promisify(scrypt);
 
 if (process.env.NODE_ENV === "production") {
   throw new Error("Seed script refuses to run in production (it creates known creds).");
+}
+
+/**
+ * Hash a password the same way Better Auth does (@better-auth/utils/password):
+ * scrypt with N=16384, r=16, p=1, dkLen=64, format "salt:key" (both hex).
+ * Replicated here with node:crypto to avoid a workspace dep cycle (auth→db).
+ */
+async function hashPasswordDev(password: string): Promise<string> {
+  const salt = randomBytes(16).toString("hex");
+  const key = (await scryptAsync(password.normalize("NFKC"), salt, 64, {
+    N: 16384,
+    r: 16,
+    p: 1,
+    maxmem: 128 * 16384 * 16 * 2,
+  })) as Buffer;
+  return `${salt}:${key.toString("hex")}`;
 }
 
 const prisma = new PrismaClient();
 
 async function main() {
   const ownerEmail = "owner@example.com";
+  const ownerPassword = "opennote123";
   let owner = await prisma.user.findUnique({ where: { email: ownerEmail } });
   if (!owner) {
     owner = await prisma.user.create({
       data: { email: ownerEmail, name: "OpenNote Owner", emailVerified: true },
     });
+  }
+
+  // Create a Better Auth credential account so the seeded owner can log in
+  // (owner@example.com / opennote123). Better Auth uses @better-auth/utils/password
+  // (Node scrypt) — import directly to avoid a workspace dep cycle (auth→db).
+  // Idempotent: skip if a credential already exists.
+  const existingAcct = await prisma.account.findFirst({
+    where: { userId: owner.id, providerId: "credential" },
+  });
+  if (!existingAcct) {
+    const hash = await hashPasswordDev(ownerPassword);
+    await prisma.account.create({
+      data: {
+        userId: owner.id,
+        providerId: "credential",
+        accountId: owner.id,
+        password: hash,
+      },
+    });
+    console.log(`[seed] owner login: ${ownerEmail} / ${ownerPassword}`);
   }
 
   const workspaceSlug = "opennote";
