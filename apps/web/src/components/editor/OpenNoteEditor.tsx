@@ -110,17 +110,60 @@ export default function OpenNoteEditor({
     [provider, schema],
   );
 
+  // Insert a sub-page: backend creates the pages row with parent_page_id (the
+  // edge the editor must NOT set itself, decision #2), returns the pageId, then
+  // we insert a subpage block referencing it. Read-only users can't.
+  const insertSubPage = async () => {
+    if (!editable) return;
+    try {
+      const res = await fetch(`/api/pages/${pageId}/subpages`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: "" }),
+      });
+      if (!res.ok) return;
+      const { page } = (await res.json()) as { page: { id: string; title: string } };
+      editor.insertBlocks(
+        [{ type: "subpage", props: { pageId: page.id, title: page.title || "Untitled" } }],
+        editor.getTextCursorPosition().block,
+        "after",
+      );
+    } catch {
+      // Surface is the toolbar; a failed insert is a no-op for v1.
+    }
+  };
+
   return (
     <div className="opennote-editor" data-workspace={workspaceId}>
       <div
         style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "0.75rem",
           fontSize: 12,
           color: "var(--muted)",
           padding: "0.25rem 0",
         }}
-        aria-hidden
       >
-        {connected ? "● Connected" : "○ Connecting…"}
+        <span aria-hidden>{connected ? "● Connected" : "○ Connecting…"}</span>
+        {editable ? (
+          <button
+            type="button"
+            onClick={insertSubPage}
+            style={{
+              background: "none",
+              border: "1px solid var(--border)",
+              borderRadius: 6,
+              padding: "0.15rem 0.5rem",
+              cursor: "pointer",
+              color: "var(--fg)",
+              fontSize: 12,
+            }}
+            title="Create a nested sub-page"
+          >
+            + Sub-page
+          </button>
+        ) : null}
       </div>
       <BlockNoteView
         editor={editor}

@@ -1,9 +1,10 @@
 /**
- * apps/web — custom BlockNote blocks: callout, toggle, embed (ticket 0005).
+ * apps/web — custom BlockNote blocks: callout, toggle, embed, subpage
+ * (ticket 0005).
  *
  * Each is a ProseMirror node spec (createReactBlockSpec) + a React render
- * component + (for embed) a slash-menu entry. The schema is composed in
- * {@link buildEditorSchema} by spreading the BlockNote defaults + these.
+ * component. The schema is composed in {@link buildEditorSchema} by spreading
+ * the BlockNote defaults + these.
  *
  * 🔒 Security (SECURITY-REVIEW 0005 #1, #2): the embed block renders an iframe,
  * so its render component calls the Layer 1 url-safety helpers AT RENDER TIME
@@ -13,11 +14,7 @@
 import { BlockNoteSchema, defaultBlockSpecs } from "@blocknote/core";
 import { createReactBlockSpec } from "@blocknote/react";
 import type { ReactNode } from "react";
-import {
-  resolveEmbed,
-  buildEmbedSandbox,
-  sanitizeUrl,
-} from "@opennote/shared";
+import { resolveEmbed, buildEmbedSandbox, sanitizeUrl } from "@opennote/shared";
 
 // ---------------------------------------------------------------------------
 // Callout — an emphasized note box with an emoji icon + color.
@@ -82,9 +79,8 @@ export const Toggle = createReactBlockSpec(
   {
     render: ({ block, contentRef, editor }) => {
       const props = block.props as { collapsed: boolean };
-      // Toggle collapse by flipping the prop. The nested children render via
-      // BlockNote's standard block-nesting (indent) in v1; the collapsed flag
-      // hides them via CSS.
+      // Toggle collapse by flipping the prop. Read-only users can't toggle
+      // (editor.isEditable is a getter, not a method).
       const toggle = () => {
         if (!editor.isEditable) return;
         editor.updateBlock(block, {
@@ -139,9 +135,7 @@ export const Embed = createReactBlockSpec(
       // the placeholder, never the iframe. Don't trust the editor schema alone.
       const resolved = props.url ? resolveEmbed(props.url) : null;
       if (!resolved) {
-        return (
-          <EmbedPlaceholder url={props.url} invalid={Boolean(props.url)} />
-        );
+        return <EmbedPlaceholder url={props.url} invalid={Boolean(props.url)} />;
       }
       return (
         <div
@@ -161,7 +155,6 @@ export const Embed = createReactBlockSpec(
             // 🔒 req #1: restrictive sandbox (buildEmbedSandbox never combines
             // allow-scripts + allow-same-origin).
             sandbox={buildEmbedSandbox(resolved.provider)}
-            // allow fullscreen for video providers; nothing else.
             allow="fullscreen; picture-in-picture"
             referrerPolicy="strict-origin-when-cross-origin"
             style={{
@@ -178,13 +171,7 @@ export const Embed = createReactBlockSpec(
   },
 );
 
-function EmbedPlaceholder({
-  url,
-  invalid,
-}: {
-  url: string;
-  invalid: boolean;
-}): ReactNode {
+function EmbedPlaceholder({ url, invalid }: { url: string; invalid: boolean }): ReactNode {
   // 🔒 sanitizeUrl for the link href too (never a raw javascript: link).
   const safeHref = url ? sanitizeUrl(url) : null;
   return (
@@ -204,8 +191,8 @@ function EmbedPlaceholder({
       <span>🔗</span>
       {invalid ? (
         <span>
-          Unsupported embed URL{safeHref ? <>: <a href={safeHref}>{url}</a></> : null}
-          . Allowed: YouTube, Vimeo, Figma, Loom (https only).
+          Unsupported embed URL{safeHref ? <>: <a href={safeHref}>{url}</a></> : null}.
+          Allowed: YouTube, Vimeo, Figma, Loom (https only).
         </span>
       ) : (
         <span>Empty embed — paste a YouTube / Vimeo / Figma / Loom URL.</span>
@@ -215,14 +202,60 @@ function EmbedPlaceholder({
 }
 
 // ---------------------------------------------------------------------------
+// Sub-page — a block that links to a nested page (decision #2: backend owns
+// the parent edge; this block just references the pageId the backend returned).
+// ---------------------------------------------------------------------------
+
+export const SubPage = createReactBlockSpec(
+  {
+    type: "subpage" as const,
+    propSchema: {
+      pageId: { default: "" },
+      title: { default: "Untitled" },
+    },
+    content: "none",
+  },
+  {
+    render: ({ block }) => {
+      const props = block.props as { pageId: string; title: string };
+      // Navigate to the nested page on click. The pageId is the immutable pages
+      // PK; the title is a snapshot refreshed from the doc on save.
+      const go = () => {
+        if (props.pageId) window.location.assign(`/p/${props.pageId}`);
+      };
+      return (
+        <div
+          onClick={go}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "0.5rem",
+            padding: "0.5rem 0.75rem",
+            margin: "0.25rem 0",
+            borderRadius: 8,
+            cursor: props.pageId ? "pointer" : "default",
+            color: "var(--fg)",
+            border: "1px solid var(--border)",
+            fontSize: 15,
+          }}
+          title={props.pageId ? "Open sub-page" : "Sub-page not yet created"}
+        >
+          <span>📄</span>
+          <span>{props.title || "Untitled"}</span>
+        </div>
+      );
+    },
+  },
+);
+
+// ---------------------------------------------------------------------------
 // Schema composition: BlockNote defaults + our custom blocks.
 // ---------------------------------------------------------------------------
 
 /**
- * Build the editor schema with the default blocks plus callout, toggle, and
- * embed. createReactBlockSpec returns a FACTORY, so each custom block must be
- * called (e.g. `Callout()`) to instantiate the spec. The mention + sub-page
- * blocks (Layer 5) extend this further.
+ * Build the editor schema with the default blocks plus callout, toggle, embed,
+ * and subpage. createReactBlockSpec returns a FACTORY, so each custom block
+ * must be called (e.g. `Callout()`) to instantiate the spec.
  */
 export function buildEditorSchema() {
   return BlockNoteSchema.create({
@@ -231,7 +264,7 @@ export function buildEditorSchema() {
       callout: Callout(),
       toggle: Toggle(),
       embed: Embed(),
+      subpage: SubPage(),
     },
   });
 }
-
