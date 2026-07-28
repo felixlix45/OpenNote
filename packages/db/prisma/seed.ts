@@ -22,7 +22,7 @@ async function main() {
   let owner = await prisma.user.findUnique({ where: { email: ownerEmail } });
   if (!owner) {
     owner = await prisma.user.create({
-      data: { email: ownerEmail, name: "OpenNote Owner", emailVerified: new Date() },
+      data: { email: ownerEmail, name: "OpenNote Owner", emailVerified: true },
     });
   }
 

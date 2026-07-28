@@ -15,6 +15,7 @@
  */
 import { betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
+import { randomUUID } from "node:crypto";
 import type { PrismaClient } from "@opennote/db";
 import type { Env } from "@opennote/config/env";
 
@@ -40,6 +41,16 @@ export function createBetterAuth({ prisma, env }: BetterAuthDeps) {
     secret: env.AUTH_SECRET,
     baseURL: env.APP_URL,
     trustedOrigins,
+
+    // Generate UUIDs for all Better Auth-owned rows (users, sessions, accounts,
+    // verifications). The Prisma schema types these ids as @db.Uuid, so Better
+    // Auth's default nanoid-style generator (a non-UUID string) would fail with
+    // P2023 "inconsistent column data." randomUUID produces RFC 4122 v4 UUIDs.
+    advanced: {
+      database: {
+        generateId: () => randomUUID(),
+      },
+    },
 
     emailAndPassword: {
       enabled: true,
