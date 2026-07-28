@@ -503,6 +503,279 @@ export async function countWorkspaces(db: PrismaClient): Promise<number> {
 
 
 // ---------------------------------------------------------------------------
+// Sidebar — the visible page/folder tree, plus per-user Recent + Favorites.
+//
+// 🔒 SECURITY: every listing here is **per-node permission-scoped**. Unlike the
+// `listFolderChildren` accessor (which returns all children of a readable parent
+// and relies on the union rule's monotonicity), these run the
+// owner/admin-bypass-OR-effective_permission() filter against EACH node, the
+// same pattern as `searchPages`. A page the user cannot read never appears in
+// the sidebar — not even its id/title.
+// ---------------------------------------------------------------------------
+
+export interface VisibleTreeArgs {
+  workspaceId: string;
+  /** The user running the query — for inline permission scoping. */
+  userId: string;
+  /** Nesting-depth cap forwarded to the CTE (env MAX_NESTING_DEPTH). */
+  maxNestingDepth: number;
+}
+
+/**
+ * The full visible content tree for a workspace, as two flat sets (folders +
+ * pages). The client nests them. Mirrors `searchPages`' permission filter:
+ * owner/admin see everything; everyone else sees only pages/folders on a path
+ * where they hold reader/commenter/editor. Soft-deleted nodes excluded.
+ *
+ * Folder visibility uses the same `effective_permission(..., 'folder', id)` the
+ * doc-load path uses, so the sidebar can never reveal a folder the user can't
+ * open.
+ */
+export async function listVisibleTree(db: PrismaClient, args: VisibleTreeArgs) {
+  // Two parallel queries keep the SQL readable (folders vs pages differ in the
+  // resource_type argument + columns). Both reuse the identical permission
+  // predicate as `searchPages`.
+  const [folders, pages] = await Promise.all([
+    db.$queryRaw<
+      Array<{
+        id: string;
+        workspace_id: string;
+        parent_id: string | null;
+        name: string;
+        created_by: string;
+        deleted_at: Date | null;
+        created_at: Date;
+        updated_at: Date;
+      }>
+    >`
+      SELECT f.id, f.workspace_id, f.parent_id, f.name,
+             f.created_by, f.deleted_at, f.created_at, f.updated_at
+        FROM folders f
+       WHERE f.workspace_id = ${args.workspaceId}::uuid
+         AND f.deleted_at IS NULL
+         AND (
+           EXISTS (
+             SELECT 1 FROM workspace_members wm
+              WHERE wm.workspace_id = ${args.workspaceId}::uuid
+                AND wm.user_id = ${args.userId}::uuid
+                AND wm.role IN ('owner', 'admin')
+           )
+           OR effective_permission(
+               ${args.workspaceId}::uuid,
+               ${args.userId}::uuid,
+               'folder',
+               f.id,
+               ${args.maxNestingDepth}::int
+             ) IN ('reader', 'commenter', 'editor')
+         )
+       ORDER BY f.name ASC
+    `,
+    db.$queryRaw<
+      Array<{
+        id: string;
+        workspace_id: string;
+        folder_id: string | null;
+        parent_page_id: string | null;
+        title: string;
+        icon: string | null;
+        created_by: string;
+        deleted_at: Date | null;
+        created_at: Date;
+        updated_at: Date;
+      }>
+    >`
+      SELECT p.id, p.workspace_id, p.folder_id, p.parent_page_id,
+             p.title, p.icon, p.created_by, p.deleted_at,
+             p.created_at, p.updated_at
+        FROM pages p
+       WHERE p.workspace_id = ${args.workspaceId}::uuid
+         AND p.deleted_at IS NULL
+         AND (
+           EXISTS (
+             SELECT 1 FROM workspace_members wm
+              WHERE wm.workspace_id = ${args.workspaceId}::uuid
+                AND wm.user_id = ${args.userId}::uuid
+                AND wm.role IN ('owner', 'admin')
+           )
+           OR effective_permission(
+               ${args.workspaceId}::uuid,
+               ${args.userId}::uuid,
+               'page',
+               p.id,
+               ${args.maxNestingDepth}::int
+             ) IN ('reader', 'commenter', 'editor')
+         )
+       ORDER BY p.title ASC
+    `,
+  ]);
+  return { folders, pages };
+}
+
+/**
+ * Record that a user opened a page — upserts `page_visits`. The caller MUST have
+ * already proven `can_read` for the page (no visit row for an unreadable page).
+ * `workspaceId` is denormalized onto the row so the recent query can scope by
+ * workspace without a join.
+ */
+export async function recordPageVisit(
+  db: PrismaClient,
+  args: { userId: string; pageId: string; workspaceId: string },
+): Promise<void> {
+  await db.pageVisit.upsert({
+    where: {
+      userId_pageId: { userId: args.userId, pageId: args.pageId },
+    },
+    create: {
+      userId: args.userId,
+      pageId: args.pageId,
+      workspaceId: args.workspaceId,
+      lastVisitedAt: new Date(),
+    },
+    update: { lastVisitedAt: new Date() },
+  });
+}
+
+/**
+ * The user's recently-visited pages in a workspace, newest first. Permission-
+ * scoped: a page whose share was revoked drops out (the join against the same
+ * owner/admin-bypass-OR-effective_permission() predicate excludes it), so a
+ * stale `page_visits` row is harmless.
+ *
+ * Ordered by `last_visited_at DESC`; ties broken by title for stable output.
+ */
+export async function listRecentPages(
+  db: PrismaClient,
+  args: {
+    workspaceId: string;
+    userId: string;
+    limit: number;
+    maxNestingDepth: number;
+  },
+) {
+  return db.$queryRaw<
+    Array<{
+      id: string;
+      title: string;
+      icon: string | null;
+      last_visited_at: Date;
+    }>
+  >`
+    SELECT p.id, p.title, p.icon, pv.last_visited_at
+      FROM page_visits pv
+      JOIN pages p ON p.id = pv.page_id
+     WHERE pv.user_id = ${args.userId}::uuid
+       AND pv.workspace_id = ${args.workspaceId}::uuid
+       AND p.deleted_at IS NULL
+       AND (
+         EXISTS (
+           SELECT 1 FROM workspace_members wm
+            WHERE wm.workspace_id = ${args.workspaceId}::uuid
+              AND wm.user_id = ${args.userId}::uuid
+              AND wm.role IN ('owner', 'admin')
+         )
+         OR effective_permission(
+             ${args.workspaceId}::uuid,
+             ${args.userId}::uuid,
+             'page',
+             p.id,
+             ${args.maxNestingDepth}::int
+           ) IN ('reader', 'commenter', 'editor')
+       )
+     ORDER BY pv.last_visited_at DESC, p.title ASC
+     LIMIT ${args.limit}::int
+  `;
+}
+
+/**
+ * The user's pinned (favorited) pages in a workspace. Same permission-scoping as
+ * {@link listRecentPages}: a revoked share removes the page from Favorites even
+ * though the `favorite_pages` row lingers.
+ */
+export async function listFavoritePages(
+  db: PrismaClient,
+  args: {
+    workspaceId: string;
+    userId: string;
+    maxNestingDepth: number;
+  },
+) {
+  return db.$queryRaw<
+    Array<{
+      id: string;
+      title: string;
+      icon: string | null;
+      created_at: Date;
+    }>
+  >`
+    SELECT p.id, p.title, p.icon, fp.created_at
+      FROM favorite_pages fp
+      JOIN pages p ON p.id = fp.page_id
+     WHERE fp.user_id = ${args.userId}::uuid
+       AND fp.workspace_id = ${args.workspaceId}::uuid
+       AND p.deleted_at IS NULL
+       AND (
+         EXISTS (
+           SELECT 1 FROM workspace_members wm
+            WHERE wm.workspace_id = ${args.workspaceId}::uuid
+              AND wm.user_id = ${args.userId}::uuid
+              AND wm.role IN ('owner', 'admin')
+         )
+         OR effective_permission(
+             ${args.workspaceId}::uuid,
+             ${args.userId}::uuid,
+             'page',
+             p.id,
+             ${args.maxNestingDepth}::int
+           ) IN ('reader', 'commenter', 'editor')
+       )
+     ORDER BY fp.created_at DESC, p.title ASC
+  `;
+}
+
+/** Pin a page (idempotent on the composite PK). Caller proves can_read first. */
+export async function addFavorite(
+  db: PrismaClient,
+  args: { userId: string; pageId: string; workspaceId: string },
+): Promise<void> {
+  await db.favoritePage.upsert({
+    where: {
+      userId_pageId: { userId: args.userId, pageId: args.pageId },
+    },
+    create: {
+      userId: args.userId,
+      pageId: args.pageId,
+      workspaceId: args.workspaceId,
+    },
+    update: {}, // already favorited — no-op
+  });
+}
+
+/** Unpin a page (no-op if not pinned). */
+export async function removeFavorite(
+  db: PrismaClient,
+  args: { userId: string; pageId: string },
+): Promise<void> {
+  try {
+    await db.favoritePage.delete({
+      where: {
+        userId_pageId: { userId: args.userId, pageId: args.pageId },
+      },
+    });
+  } catch (err) {
+    // P2025 = record not found; unpinning something not pinned is a no-op.
+    if (
+      typeof err === "object" &&
+      err !== null &&
+      "code" in err &&
+      (err as { code: string }).code === "P2025"
+    ) {
+      return;
+    }
+    throw err;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Page docs (Y-doc state) — ticket 0004.
 // ---------------------------------------------------------------------------
 

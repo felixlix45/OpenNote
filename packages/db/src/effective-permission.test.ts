@@ -275,7 +275,7 @@ async function truncateAll(db: PrismaClient): Promise<void> {
   // Order-independent: disable + re-enable triggers so the all-members sync
   // trigger doesn't fire mid-truncate.
   await db.$executeRawUnsafe(
-    'TRUNCATE TABLE "shares", "page_docs", "attachments", "workspace_invites", "pages", "folders", "group_members", "groups", "workspace_members", "workspaces", "verifications", "sessions", "accounts", "users" RESTART IDENTITY CASCADE',
+    'TRUNCATE TABLE "shares", "page_docs", "attachments", "workspace_invites", "favorite_pages", "page_visits", "pages", "folders", "group_members", "groups", "workspace_members", "workspaces", "verifications", "sessions", "accounts", "users" RESTART IDENTITY CASCADE',
   );
 }
 
