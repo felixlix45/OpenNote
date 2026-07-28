@@ -18,7 +18,7 @@
  */
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import * as Y from "yjs";
 import { HocuspocusProvider } from "@hocuspocus/provider";
 import { BlockNoteView } from "@blocknote/shadcn";
@@ -133,6 +133,64 @@ export default function OpenNoteEditor({
     }
   };
 
+  // Upload a file: presigned-PUT flow (ticket 0007). Hidden <input type=file>
+  // triggers the 3-step flow: request presigned PUT → upload bytes → /complete
+  // (HEAD-verify) → insert a file block. Read-only users can't.
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const onFilePicked = async (e: ChangeEvent<HTMLInputElement>) => {
+    if (!editable) return;
+    const file = e.target.files?.[0];
+    e.target.value = ""; // reset so the same file can be picked again
+    if (!file) return;
+    try {
+      // 1. request presigned PUT
+      const req = await fetch(`/api/pages/${pageId}/attachments`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          filename: file.name,
+          mimeType: file.type || "application/octet-stream",
+          sizeBytes: file.size,
+        }),
+      });
+      if (!req.ok) return;
+      const { attachmentId, uploadUrl } = (await req.json()) as {
+        attachmentId: string;
+        uploadUrl: string;
+      };
+      // 2. upload bytes direct to S3
+      const put = await fetch(uploadUrl, {
+        method: "PUT",
+        headers: { "Content-Type": file.type || "application/octet-stream" },
+        body: file,
+      });
+      if (!put.ok) return;
+      // 3. complete (HEAD-verify + activate)
+      const complete = await fetch(`/api/attachments/${attachmentId}/complete`, {
+        method: "POST",
+      });
+      if (!complete.ok) return;
+      // 4. insert the file block referencing the attachment
+      editor.insertBlocks(
+        [
+          {
+            type: "file",
+            props: {
+              attachmentId,
+              filename: file.name,
+              mimeType: file.type || "application/octet-stream",
+              sizeBytes: file.size,
+            },
+          },
+        ],
+        editor.getTextCursorPosition().block,
+        "after",
+      );
+    } catch {
+      // failed upload is a no-op for v1
+    }
+  };
+
   return (
     <div className="opennote-editor" data-workspace={workspaceId}>
       <div
@@ -147,22 +205,46 @@ export default function OpenNoteEditor({
       >
         <span aria-hidden>{connected ? "● Connected" : "○ Connecting…"}</span>
         {editable ? (
-          <button
-            type="button"
-            onClick={insertSubPage}
-            style={{
-              background: "none",
-              border: "1px solid var(--border)",
-              borderRadius: 6,
-              padding: "0.15rem 0.5rem",
-              cursor: "pointer",
-              color: "var(--fg)",
-              fontSize: 12,
-            }}
-            title="Create a nested sub-page"
-          >
-            + Sub-page
-          </button>
+          <>
+            <button
+              type="button"
+              onClick={insertSubPage}
+              style={{
+                background: "none",
+                border: "1px solid var(--border)",
+                borderRadius: 6,
+                padding: "0.15rem 0.5rem",
+                cursor: "pointer",
+                color: "var(--fg)",
+                fontSize: 12,
+              }}
+              title="Create a nested sub-page"
+            >
+              + Sub-page
+            </button>
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              style={{
+                background: "none",
+                border: "1px solid var(--border)",
+                borderRadius: 6,
+                padding: "0.15rem 0.5rem",
+                cursor: "pointer",
+                color: "var(--fg)",
+                fontSize: 12,
+              }}
+              title="Upload a file"
+            >
+              📎 File
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              onChange={onFilePicked}
+              style={{ display: "none" }}
+            />
+          </>
         ) : null}
       </div>
       <BlockNoteView

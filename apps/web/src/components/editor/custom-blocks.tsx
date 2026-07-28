@@ -256,11 +256,87 @@ export const SubPage = createReactBlockSpec(
 // ---------------------------------------------------------------------------
 // Schema composition: BlockNote defaults + our custom blocks.
 // ---------------------------------------------------------------------------
+// File — references an attachment (couples to ticket 0007). Renders icon +
+// filename + a download link. The link points at /api/attachments/:id/url
+// (re-mints a fresh signed GET through the permission check on every click),
+// NOT the raw S3 key.
+// ---------------------------------------------------------------------------
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+export const FileBlock = createReactBlockSpec(
+  {
+    type: "file" as const,
+    propSchema: {
+      attachmentId: { default: "" },
+      filename: { default: "file" },
+      mimeType: { default: "application/octet-stream" },
+      sizeBytes: { default: 0 },
+    },
+    content: "none",
+  },
+  {
+    render: ({ block }) => {
+      const props = block.props as {
+        attachmentId: string;
+        filename: string;
+        mimeType: string;
+        sizeBytes: number;
+      };
+      if (!props.attachmentId) {
+        return (
+          <div style={{ padding: "0.5rem", color: "var(--muted)", fontSize: 14 }}>
+            File not uploaded.
+          </div>
+        );
+      }
+      // Fetch a fresh signed URL on click (re-mints through can_read). This keeps
+      // every download authorized + the URL short-lived.
+      const download = async () => {
+        const res = await fetch(`/api/attachments/${props.attachmentId}/url`);
+        if (!res.ok) return;
+        const { url } = (await res.json()) as { url: string };
+        window.open(url, "_blank");
+      };
+      return (
+        <div
+          onClick={download}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "0.75rem",
+            padding: "0.6rem 0.875rem",
+            margin: "0.25rem 0",
+            borderRadius: 8,
+            cursor: "pointer",
+            border: "1px solid var(--border)",
+            fontSize: 14,
+          }}
+          title="Download"
+        >
+          <span style={{ fontSize: 20 }}>📎</span>
+          <span style={{ flex: 1, color: "var(--fg)" }}>{props.filename}</span>
+          <span style={{ color: "var(--muted)", fontSize: 12 }}>
+            {formatBytes(props.sizeBytes)}
+          </span>
+        </div>
+      );
+    },
+  },
+);
+
+// ---------------------------------------------------------------------------
+// Schema composition: BlockNote defaults + our custom blocks.
+// ---------------------------------------------------------------------------
 
 /**
  * Build the editor schema with the default blocks plus callout, toggle, embed,
- * and subpage. createReactBlockSpec returns a FACTORY, so each custom block
- * must be called (e.g. `Callout()`) to instantiate the spec.
+ * subpage, and file. createReactBlockSpec returns a FACTORY, so each custom
+ * block must be called (e.g. `Callout()`) to instantiate the spec.
  */
 export function buildEditorSchema() {
   return BlockNoteSchema.create({
@@ -270,6 +346,7 @@ export function buildEditorSchema() {
       toggle: Toggle(),
       embed: Embed(),
       subpage: SubPage(),
+      file: FileBlock(),
     },
     inlineContentSpecs: {
       ...defaultInlineContentSpecs,
