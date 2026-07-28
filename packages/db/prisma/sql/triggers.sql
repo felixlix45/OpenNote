@@ -35,6 +35,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+DROP TRIGGER IF EXISTS workspace_members_all_members_sync ON workspace_members;
 CREATE TRIGGER workspace_members_all_members_sync
   AFTER INSERT OR UPDATE OR DELETE ON workspace_members
   FOR EACH ROW EXECUTE FUNCTION keep_all_members_in_sync();
@@ -59,6 +60,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+DROP TRIGGER IF EXISTS groups_all_members_backfill ON groups;
 CREATE TRIGGER groups_all_members_backfill
   AFTER INSERT ON groups
   FOR EACH ROW EXECUTE FUNCTION backfill_all_members_on_group_create();

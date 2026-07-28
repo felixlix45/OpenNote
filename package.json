@@ -15,6 +15,7 @@
     "db:generate": "pnpm --filter @opennote/db db:generate",
     "db:migrate": "pnpm --filter @opennote/db db:migrate",
     "db:push": "pnpm --filter @opennote/db db:push",
+    "db:setup": "pnpm --filter @opennote/db db:setup",
     "db:seed": "pnpm --filter @opennote/db db:seed",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md,yml,yaml}\""
   },

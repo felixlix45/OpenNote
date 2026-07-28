@@ -21,14 +21,8 @@ docker compose up -d
 cp .env.example .env
 # edit AUTH_SECRET: openssl rand -base64 32
 
-# 4. database
-corepack pnpm db:generate
-corepack pnpm db:push           # dev: apply schema directly
-# apply the raw SQL (CHECKs, FTS, triggers, effective_permission()):
-psql "$DATABASE_URL" -f packages/db/prisma/sql/constraints.sql
-psql "$DATABASE_URL" -f packages/db/prisma/sql/triggers.sql
-psql "$DATABASE_URL" -f packages/db/prisma/sql/effective-permission.sql
-corepack pnpm db:seed
+# 4. database (schema + raw SQL + seed, one command)
+corepack pnpm db:setup           # db push + apply all SQL + seed (idempotent)
 
 # 5. run everything
 corepack pnpm dev               # web :3000, realtime :4321, worker
