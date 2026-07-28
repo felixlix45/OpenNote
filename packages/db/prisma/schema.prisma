@@ -57,6 +57,8 @@ model User {
   createdShares  Share[]   @relation("ShareCreatedBy")
   createdInvites WorkspaceInvite[]
   attachments    Attachment[]
+  pageVisits     PageVisit[]
+  favoritePages  FavoritePage[]
 
   @@map("users")
 }
@@ -148,6 +150,8 @@ model Workspace {
   shares              Share[]
   attachments         Attachment[]
   invites             WorkspaceInvite[]
+  pageVisits          PageVisit[]
+  favoritePages       FavoritePage[]
 
   @@unique([slug])
   @@map("workspaces")
@@ -250,6 +254,8 @@ model Page {
   childPages   Page[]       @relation("PageChildren")
   doc          PageDoc?
   attachments  Attachment[]
+  visits       PageVisit[]
+  favorites    FavoritePage[]
   createdBy    User         @relation(fields: [createdById], references: [id])
 
   // Exactly one tree parent (ticket 0003): folder_id XOR parent_page_id.
@@ -355,4 +361,47 @@ model WorkspaceInvite {
   @@index([workspaceId])
   @@index([email])
   @@map("workspace_invites")
+}
+
+// =============================================================================
+// SIDEBAR — per-user Recent + Favorites (sidebar feature)
+// Both are tenant + user scoped; rows live only for pages the user can read
+// (the recording endpoints prove can_read before upserting). Revoking a share
+// therefore means the page stops appearing in the sidebar; the orphaned row
+// is harmless and naturally ages out of Recents.
+// =============================================================================
+
+model PageVisit {
+  // One row per (user, page). lastVisitedAt is bumped on each open → drives the
+  // sidebar's "Recent" section (ORDER BY last_visited_at DESC, LIMIT n).
+  userId        String   @map("user_id") @db.Uuid
+  pageId        String   @map("page_id") @db.Uuid
+  workspaceId   String   @map("workspace_id") @db.Uuid
+  lastVisitedAt DateTime @default(now()) @map("last_visited_at") @db.Timestamptz
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  page          Page      @relation(fields: [pageId], references: [id], onDelete: Cascade)
+  workspace     Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@id([userId, pageId])
+  @@index([userId, workspaceId, lastVisitedAt]) // recent-pages query
+  @@map("page_visits")
+}
+
+model FavoritePage {
+  // A user's pinned pages. Distinct from Recents — these are an explicit
+  // "bookmark" the user curates (star toggle in the sidebar/page header).
+  userId      String   @map("user_id") @db.Uuid
+  pageId      String   @map("page_id") @db.Uuid
+  workspaceId String   @map("workspace_id") @db.Uuid
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  page        Page      @relation(fields: [pageId], references: [id], onDelete: Cascade)
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@id([userId, pageId])
+  @@index([userId, workspaceId])
+  @@map("favorite_pages")
 }
