@@ -26,6 +26,7 @@ import { useCreateBlockNote } from "@blocknote/react";
 import { withCollaboration } from "@blocknote/core/yjs";
 import { buildEditorSchema } from "./custom-blocks";
 import { uploadAttachment } from "./upload";
+import { MentionSuggestionMenu } from "./MentionSuggestionMenu";
 // BlockNote's CSS — pulls in the editor + shadcn theme.
 import "@blocknote/core/fonts/inter.css";
 import "@blocknote/shadcn/style.css";
@@ -231,7 +232,10 @@ export default function OpenNoteEditor({
         editable={editable}
         theme="light"
         // Slash menu + drag handle = BlockNote defaults (decision #3).
-      />
+      >
+        {/* @mention popup: triggers on @, queries the permission-scoped typeaheads */}
+        <MentionSuggestionMenu editor={editor} workspaceId={workspaceId} />
+      </BlockNoteView>
     </div>
   );
 }
