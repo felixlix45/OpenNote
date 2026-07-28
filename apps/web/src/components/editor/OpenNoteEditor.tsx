@@ -8,10 +8,12 @@
  * the UX surface).
  *
  * This is the core: default BlockNote schema (paragraph, headings, lists, todo,
- * quote, code, divider, table, image) + the 6 marks + color/highlight (req #5)
- * + markdown input/paste (req #6). Custom blocks (callout/toggle/embed/mention/
- * sub-page) layer on in tickets via the schema's `blockSpecs` override — kept
- * separate so this file stays the stable core.
+ * quote, code, divider, table, image) + the default style specs (bold, italic,
+ * underline, strikethrough, code + textColor/backgroundColor = color/highlight,
+ * req #5) + markdown input/paste (req #6). Custom blocks (callout/toggle/embed/
+ * mention/sub-page/file) layer on via buildEditorSchema's blockSpecs override.
+ * Color/highlight are included via defaultStyleSpecs (BlockNoteSchema.create
+ * defaults styleSpecs when not explicitly provided).
  *
  * Client-only: BlockNote touches the DOM and must not SSR. Mounted via a
  * dynamic import (ssr: false) from the page route.
