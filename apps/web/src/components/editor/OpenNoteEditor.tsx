@@ -24,6 +24,7 @@ import { HocuspocusProvider } from "@hocuspocus/provider";
 import { BlockNoteView } from "@blocknote/shadcn";
 import { useCreateBlockNote } from "@blocknote/react";
 import { withCollaboration } from "@blocknote/core/yjs";
+import { buildEditorSchema } from "./custom-blocks";
 // BlockNote's CSS — pulls in the editor + shadcn theme.
 import "@blocknote/core/fonts/inter.css";
 import "@blocknote/shadcn/style.css";
@@ -93,9 +94,11 @@ export default function OpenNoteEditor({
   // directly (it relays cursor state). The fragment is the named XML slot
   // BlockNote stores blocks in; `user` drives cursor labels.
   const provider = providerRef.current;
+  const schema = useMemo(() => buildEditorSchema(), []);
   const editor = useCreateBlockNote(
     provider?.awareness
       ? withCollaboration({
+          schema,
           collaboration: {
             provider: { awareness: provider.awareness },
             fragment: doc.getXmlFragment("document-store"),
@@ -103,8 +106,8 @@ export default function OpenNoteEditor({
             showCursorLabels: "activity",
           },
         })
-      : {},
-    [provider],
+      : { schema },
+    [provider, schema],
   );
 
   return (
