@@ -1,0 +1,355 @@
+// =============================================================================
+// OpenNote — Prisma schema (source of truth, ticket 0003)
+// =============================================================================
+// Maps ~1:1 to the SQL spec in .tracker/issues/0003.md. Postgres ≥15 target.
+// Conventions: UUID PKs (gen_random_uuid via @default(uuid())), timestamptz
+// for all timestamps (@default(now())/@updatedAt), soft-delete via deleted_at.
+//
+// 🔒 Security requirements from SECURITY-REVIEW.md are folded in:
+//   - HIGH #1 (tenant isolation on polymorphic shares.resource_id): every
+//     permission/share query must scope by workspace_id AND assert the target
+//     resource's workspace_id matches. The repository layer in packages/db
+//     enforces this; the raw effective-permission CTE (see sql/effective-permission.sql)
+//     filters s.workspace_id = $W.
+//   - HIGH #4 (attachment s3_key path traversal): uuid-only key, filename as
+//     metadata only. Enforced in packages/storage.
+//   - MEDIUM (soft-delete filter discipline): every content query filters
+//     deleted_at IS NULL — enforced by the repository layer, not per-query.
+//   - MEDIUM (nesting-depth cap): MAX_NESTING_DEPTH bounds the recursive CTE.
+
+generator client {
+  provider      = "prisma-client-js"
+  output        = "../src/generated/client"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// =============================================================================
+// IDENTITY — owned by Better Auth (ticket 0006).
+// `user` is the global identity referenced by workspace_members.user_id.
+// session/account/verification are Better Auth's standard tables (credentials,
+// OAuth linking, email-verification + password-reset tokens). Better Auth's
+// Prisma adapter reads/writes these directly; OpenNote only reads user identity.
+// =============================================================================
+
+model User {
+  id            String    @id @default(uuid()) @db.Uuid
+  email         String    @unique
+  name          String?
+  emailVerified DateTime? @map("email_verified") @db.Timestamptz
+  image         String?   @map("avatar_url")
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt     DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+
+  sessions      Session[]
+  accounts      Account[]
+  members       WorkspaceMember[]
+  groups        GroupMember[]
+  ownedWorkspaces Workspace[] @relation("WorkspaceOwner")
+  createdWorkspaces Workspace[] @relation("WorkspaceCreator")
+  createdFolders Folder[]
+  createdPages   Page[]
+  sharesAsPrincipal Share[] @relation("SharePrincipalUser")
+  createdShares  Share[]   @relation("ShareCreatedBy")
+  createdInvites WorkspaceInvite[]
+  attachments    Attachment[]
+
+  @@map("users")
+}
+
+model Session {
+  id        String   @id @default(uuid()) @db.Uuid
+  // Session token is hashed before storage (Better Auth default). The raw token
+  // travels in the HTTP-only cookie; the DB never holds it in cleartext.
+  token     String   @unique
+  userId    String   @map("user_id") @db.Uuid
+  expiresAt DateTime @map("expires_at") @db.Timestamptz
+  // IP + UA captured for anomaly detection / audit (🔒 never log other secrets).
+  ipAddress String?  @map("ip_address")
+  userAgent String?  @map("user_agent")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("sessions")
+}
+
+model Account {
+  // One User has many Accounts: the password "account" + one per linked OAuth
+  // provider. 🔒 SECURITY-REVIEW: OAuth account linking requires the existing
+  // session (Better Auth `accountLinking` default) — don't disable.
+  id                String   @id @default(uuid()) @db.Uuid
+  userId            String   @map("user_id") @db.Uuid
+  // Provider id within that provider (e.g. Google sub, GitHub node id, or
+  // "credential" for email/pw).
+  providerId        String   @map("provider_id")
+  accountId         String   @map("account_id")
+  // For "credential": argon2 hash. For OAuth: provider tokens (encrypted at
+  // rest by Better Auth where supported).
+  password          String?
+  accessToken       String?  @map("access_token")
+  refreshToken      String?  @map("refresh_token")
+  accessTokenExpiresAt DateTime? @map("access_token_expires_at") @db.Timestamptz
+  refreshTokenExpiresAt DateTime? @map("refresh_token_expires_at") @db.Timestamptz
+  scope             String?
+  idToken           String?  @map("id_token")
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt         DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([providerId, userId])
+  @@index([userId])
+  @@map("accounts")
+}
+
+model Verification {
+  // Better Auth's generic token store: email-verification, password-reset,
+  // invite-accept, etc. 🔒 SECURITY-REVIEW HIGH #5: tokens are CSPRNG-generated,
+  // expiring, single-use, revoked on accept/login.
+  id         String   @id @default(uuid()) @db.Uuid
+  identifier String
+  value      String   @unique
+  expiresAt  DateTime @map("expires_at") @db.Timestamptz
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt  DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  @@index([identifier])
+  @@map("verifications")
+}
+
+// =============================================================================
+// WORKSPACE / TENANCY (ticket 0003)
+// =============================================================================
+
+model Workspace {
+  id                  String   @id @default(uuid()) @db.Uuid
+  name                String
+  slug                String
+  // NULL = unlimited. Counted toward ATTACHMENT_WORKSPACE_QUOTA_BYTES (ticket 0007).
+  storageQuotaBytes   BigInt?  @map("storage_quota_bytes")
+  createdById         String   @map("created_by") @db.Uuid
+  ownerId             String   @map("owner_id") @db.Uuid
+  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt           DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  createdBy           User     @relation("WorkspaceCreator", fields: [createdById], references: [id])
+  owner               User     @relation("WorkspaceOwner", fields: [ownerId], references: [id])
+  members             WorkspaceMember[]
+  groups              Group[]
+  folders             Folder[]
+  pages               Page[]
+  shares              Share[]
+  attachments         Attachment[]
+  invites             WorkspaceInvite[]
+
+  @@unique([slug])
+  @@map("workspaces")
+}
+
+model WorkspaceMember {
+  // The role join (ticket 0003). PK (workspace_id, user_id). Role enum matches
+  // CONTEXT.md §Roles. The all-members group auto-tracks every non-guest member
+  // via the keep_all_members_in_sync() trigger (see sql/triggers.sql).
+  workspaceId String   @map("workspace_id") @db.Uuid
+  userId      String   @map("user_id") @db.Uuid
+  role        String   // 'guest' | 'member' | 'admin' | 'owner'
+  joinedAt    DateTime @default(now()) @map("joined_at") @db.Timestamptz
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([workspaceId, userId])
+  @@index([userId])
+  @@map("workspace_members")
+}
+
+// =============================================================================
+// GROUPS (workspace-scoped, many-to-many with users — ticket 0003)
+// =============================================================================
+
+model Group {
+  id           String   @id @default(uuid()) @db.Uuid
+  workspaceId  String   @map("workspace_id") @db.Uuid
+  name         String
+  // The all-members sentinel group: auto-maintained by trigger. One per workspace.
+  isAllMembers Boolean  @default(false) @map("is_all_members")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  workspace    Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  members      GroupMember[]
+  shares       Share[]
+
+  @@unique([workspaceId, name])
+  @@unique([workspaceId, isAllMembers])
+  @@map("groups")
+}
+
+model GroupMember {
+  groupId String @map("group_id") @db.Uuid
+  userId  String @map("user_id") @db.Uuid
+
+  group   Group  @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  user    User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([groupId, userId])
+  @@index([userId]) // serves live group lookup in permission checks (ticket 0002)
+  @@map("group_members")
+}
+
+// =============================================================================
+// CONTENT TREE (adjacency list — ticket 0003)
+// =============================================================================
+
+model Folder {
+  id          String    @id @default(uuid()) @db.Uuid
+  workspaceId String    @map("workspace_id") @db.Uuid
+  parentId    String?   @map("parent_id") @db.Uuid
+  name        String
+  createdById String    @map("created_by") @db.Uuid
+  deletedAt   DateTime? @map("deleted_at") @db.Timestamptz
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+
+  workspace   Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  parent      Folder?    @relation("FolderChildren", fields: [parentId], references: [id], onDelete: Cascade)
+  children    Folder[]   @relation("FolderChildren")
+  pages       Page[]
+  createdBy   User       @relation(fields: [createdById], references: [id])
+
+  @@index([workspaceId, parentId], type: BTree) // sidebar: children of F in W (filter deletedAt NULL in queries)
+  @@index([parentId])
+  @@map("folders")
+}
+
+model Page {
+  id           String    @id @default(uuid()) @db.Uuid // == Y-doc name (ticket 0004): "page:{id}"
+  workspaceId  String    @map("workspace_id") @db.Uuid
+  folderId     String?   @map("folder_id") @db.Uuid
+  parentPageId String?   @map("parent_page_id") @db.Uuid
+  // Denormalized mirrors refreshed from the Y-doc on save (ticket 0003 #2, #0008).
+  title        String    @default("")
+  bodyText     String    @default("") @map("body_text")
+  icon         String?
+  createdById  String    @map("created_by") @db.Uuid
+  deletedAt    DateTime? @map("deleted_at") @db.Timestamptz
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt    DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+
+  workspace    Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  folder       Folder?      @relation(fields: [folderId], references: [id])
+  parentPage   Page?        @relation("PageChildren", fields: [parentPageId], references: [id], onDelete: Cascade)
+  childPages   Page[]       @relation("PageChildren")
+  doc          PageDoc?
+  attachments  Attachment[]
+  createdBy    User         @relation(fields: [createdById], references: [id])
+
+  // Exactly one tree parent (ticket 0003): folder_id XOR parent_page_id.
+  // Enforced in SQL via CHECK; Prisma can't express XOR, so this is a
+  // post-migration raw SQL constraint (see sql/constraints.sql).
+  @@index([workspaceId, folderId], type: BTree) // sidebar (filter deletedAt NULL)
+  @@index([parentPageId])
+  @@map("pages")
+}
+
+model PageDoc {
+  // One Y-doc per page; `state` is Y.encodeStateAsUpdate(doc) bytes (ticket 0004).
+  // Read by Hocuspocus extension-database fetch(); UPSERTed on store (debounced).
+  // 🔒 REALTIME_DOC_MAX_BYTES bounds growth (enforced in apps/realtime, not here).
+  pageId    String   @id @map("page_id") @db.Uuid
+  state     Bytes
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  page      Page     @relation(fields: [pageId], references: [id], onDelete: Cascade)
+
+  @@map("page_docs")
+}
+
+// =============================================================================
+// SHARES — the ACL (two nullable FKs + CHECK exactly-one — ticket 0003)
+// =============================================================================
+
+model Share {
+  id                String   @id @default(uuid()) @db.Uuid
+  workspaceId       String   @map("workspace_id") @db.Uuid
+  // resource_id is polymorphic (folder OR page) — no FK. 🔒 HIGH #1: every query
+  // must scope workspace_id AND assert the resource belongs to that workspace.
+  resourceType      String   @map("resource_type") // 'folder' | 'page'
+  resourceId        String?  @map("resource_id") @db.Uuid // NULL = workspace-root sentinel
+  principalUserId   String?  @map("principal_user_id") @db.Uuid
+  principalGroupId  String?  @map("principal_group_id") @db.Uuid
+  level             String   // 'reader' | 'commenter' | 'editor'
+  createdById       String   @map("created_by") @db.Uuid
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  workspace         Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  principalUser     User?      @relation("SharePrincipalUser", fields: [principalUserId], references: [id], onDelete: Cascade)
+  principalGroup    Group?     @relation(fields: [principalGroupId], references: [id], onDelete: Cascade)
+  createdBy         User       @relation("ShareCreatedBy", fields: [createdById], references: [id])
+
+  // CHECK exactly-one principal enforced in raw SQL (Prisma can't express XOR).
+  @@unique([workspaceId, resourceType, resourceId, principalUserId, level], map: "shares_user_uniq")
+  @@unique([workspaceId, resourceType, resourceId, principalGroupId, level], map: "shares_group_uniq")
+  @@index([workspaceId, resourceType, resourceId], map: "shares_resource_idx")
+  @@index([principalUserId], map: "shares_user_idx")
+  @@index([principalGroupId], map: "shares_group_idx")
+  @@map("shares")
+}
+
+// =============================================================================
+// ATTACHMENTS (ticket 0007 owns details; shape here)
+// =============================================================================
+
+model Attachment {
+  id          String   @id @default(uuid()) @db.Uuid
+  pageId      String   @map("page_id") @db.Uuid
+  workspaceId String   @map("workspace_id") @db.Uuid
+  // 🔒 HIGH #4: uuid-only s3_key — no client-controlled path segments.
+  // Format: "{workspaceId}/{attachmentId}" (filename is metadata, served via Content-Disposition).
+  s3Key       String   @map("s3_key")
+  filename    String
+  mimeType    String   @map("mime_type")
+  sizeBytes   BigInt   @map("size_bytes")
+  uploadedById String  @map("uploaded_by") @db.Uuid
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  page        Page     @relation(fields: [pageId], references: [id], onDelete: Cascade)
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  uploadedBy  User     @relation(fields: [uploadedById], references: [id])
+
+  @@index([workspaceId], map: "attachments_workspace_idx") // quota sum (ticket 0007)
+  @@index([pageId])
+  @@map("attachments")
+}
+
+// =============================================================================
+// INVITES (workspace onboarding — ticket 0006 owns the flow)
+// =============================================================================
+
+model WorkspaceInvite {
+  id          String    @id @default(uuid()) @db.Uuid
+  workspaceId String    @map("workspace_id") @db.Uuid
+  email       String
+  role        String    @default("member") // role on accept
+  // 🔒 HIGH #5: CSPRNG token, expiring (7d), revocable, single-use on accept.
+  token       String    @unique
+  createdById String    @map("created_by") @db.Uuid
+  expiresAt   DateTime  @map("expires_at") @db.Timestamptz
+  acceptedAt  DateTime? @map("accepted_at") @db.Timestamptz
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdBy   User      @relation(fields: [createdById], references: [id])
+
+  @@index([workspaceId])
+  @@index([email])
+  @@map("workspace_invites")
+}
