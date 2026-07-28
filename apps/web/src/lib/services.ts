@@ -16,6 +16,8 @@ import {
   upsertPageDocState,
   searchMembers,
   searchPages,
+  workspaceAttachmentBytes,
+  getAttachment,
   PrismaClient,
 } from "@opennote/db";
 import {
@@ -49,5 +51,7 @@ export {
   upsertPageDocState,
   searchMembers,
   searchPages,
+  workspaceAttachmentBytes,
+  getAttachment,
 };
 export { env };

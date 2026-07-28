@@ -363,6 +363,31 @@ export async function searchMembers(db: PrismaClient, args: SearchMembersArgs) {
   return rows;
 }
 
+// ---------------------------------------------------------------------------
+// Attachments (ticket 0007).
+// ---------------------------------------------------------------------------
+
+/**
+ * Sum of attachment sizes for a workspace, for quota enforcement (ticket 0007 #2).
+ * Counts only 'ready' attachments (pending uploads don't count until verified).
+ * Returns 0n for an empty workspace.
+ */
+export async function workspaceAttachmentBytes(
+  db: PrismaClient,
+  workspaceId: string,
+): Promise<bigint> {
+  const result = await db.attachment.aggregate({
+    where: { workspaceId, status: "ready" },
+    _sum: { sizeBytes: true },
+  });
+  return result._sum.sizeBytes ?? 0n;
+}
+
+/** Fetch an attachment by id. */
+export async function getAttachment(db: PrismaClient, attachmentId: string) {
+  return db.attachment.findUnique({ where: { id: attachmentId } });
+}
+
 
 // ---------------------------------------------------------------------------
 // Page docs (Y-doc state) — ticket 0004.
