@@ -1,16 +1,22 @@
 /**
  * apps/web — page route that mounts the BlockNote editor (ticket 0005).
  *
- * Loads the page metadata + Y-doc snapshot via the permission-gated API, then
- * mounts {@link OpenNoteEditor} dynamically (BlockNote is client-only — can't
- * SSR). The editor connects to the realtime server for live collaboration; the
+ * Lives under the `(app)` route group, so the sidebar shell wraps it. Loads the
+ * page metadata + Y-doc snapshot via the permission-gated API, then mounts
+ * {@link OpenNoteEditor} dynamically (BlockNote is client-only — can't SSR).
+ * The editor connects to the realtime server for live collaboration; the
  * snapshot is just for fast first paint.
+ *
+ * On successful load it also records a visit (→ Recent) and syncs the sidebar's
+ * active workspace so the tree matches the viewed page.
  */
 "use client";
 
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import dynamic from "next/dynamic";
+import { Star } from "lucide-react";
+import { useWorkspace } from "@/components/sidebar/WorkspaceContext";
 
 // BlockNote touches the DOM/ProseMirror — load the editor client-side only.
 const OpenNoteEditor = dynamic(() => import("@/components/editor/OpenNoteEditor"), {
@@ -35,6 +41,8 @@ export default function PageEditor() {
   const [error, setError] = useState<string | null>(null);
   const [titleSaving, setTitleSaving] = useState(false);
   const [title, setTitle] = useState("");
+  const { setActiveWorkspaceId, refresh, isFavorite, toggleFavorite } =
+    useWorkspace();
 
   useEffect(() => {
     fetch(`/api/pages/${params.pageId}`)
@@ -45,11 +53,16 @@ export default function PageEditor() {
       .then((d) => {
         setData(d.page);
         setTitle(d.page.title);
-        // Record the workspace so the global cmd+K palette can scope search.
+        // Sync the sidebar to the page's workspace (so the tree matches) and
+        // record a visit so the page appears in Recent.
+        setActiveWorkspaceId(d.page.workspaceId);
         sessionStorage.setItem("opennote:workspaceId", d.page.workspaceId);
+        void fetch(`/api/pages/${params.pageId}/visit`, { method: "POST" }).then(
+          () => refresh(),
+        );
       })
       .catch((e) => setError(String(e)));
-  }, [params.pageId]);
+  }, [params.pageId, setActiveWorkspaceId, refresh]);
 
   // Title save (debounced). The body is persisted via the realtime server
   // (Y-doc → page_docs.state); the title is a denormalized mirror refreshed
@@ -71,30 +84,58 @@ export default function PageEditor() {
 
   if (error) {
     return (
-      <main style={{ padding: "2rem" }}>
+      <div style={{ padding: "2rem" }}>
         <h1>Couldn&apos;t load this page</h1>
         <p style={{ color: "var(--muted)" }}>{error}</p>
         <p>
           Sign in via <a href="/api/auth/sign-in">/api/auth/sign-in</a> first.
         </p>
-      </main>
+      </div>
     );
   }
   if (!data) {
     return (
-      <main style={{ padding: "2rem" }}>
+      <div style={{ padding: "2rem" }}>
         <p style={{ color: "var(--muted)" }}>Loading…</p>
-      </main>
+      </div>
     );
   }
 
   const realtimeWsUrl =
     process.env.NEXT_PUBLIC_REALTIME_WS_URL ?? "/collab";
+  const fav = isFavorite(data.id);
 
   return (
-    <main style={{ maxWidth: 720, margin: "0 auto", padding: "2rem 1.5rem" }}>
-      <div style={{ marginBottom: "0.5rem", color: "var(--muted)", fontSize: 13 }}>
-        {titleSaving ? "Saving title…" : "Saved"} · {data.canWrite ? "Editor" : "Reader"}
+    <div style={{ maxWidth: 720, margin: "0 auto", padding: "2rem 1.5rem" }}>
+      <div
+        style={{
+          marginBottom: "0.5rem",
+          color: "var(--muted)",
+          fontSize: 13,
+          display: "flex",
+          alignItems: "center",
+          gap: 12,
+        }}
+      >
+        <span>
+          {titleSaving ? "Saving title…" : "Saved"} ·{" "}
+          {data.canWrite ? "Editor" : "Reader"}
+        </span>
+        <button
+          type="button"
+          onClick={() => void toggleFavorite(data.id)}
+          title={fav ? "Remove from Favorites" : "Add to Favorites"}
+          style={{
+            border: "none",
+            background: "transparent",
+            cursor: "pointer",
+            padding: 0,
+            display: "flex",
+            color: fav ? "var(--accent)" : "var(--muted)",
+          }}
+        >
+          <Star size={16} fill={fav ? "currentColor" : "none"} />
+        </button>
       </div>
       <input
         value={title}
@@ -122,6 +163,6 @@ export default function PageEditor() {
           realtimeWsUrl={realtimeWsUrl}
         />
       </div>
-    </main>
+    </div>
   );
 }
