@@ -7,7 +7,7 @@ The canonical artifact is **[0001 — the map](./issues/0001.md)**.
 
 | ID | Title | Type | Status | Blocked by |
 |----|-------|------|--------|------------|
-| [0001](./issues/0001.md) | **MAP** — OpenNote v1 build-ready spec | `wayfinder:map` | open | — |
+| [0001](./issues/0001.md) | **MAP** — OpenNote v1 build-ready spec | `wayfinder:map` | **closed** | — |
 | [0002](./issues/0002.md) | Permission & sharing model: inheritance, roles, groups, overrides | `grilling` | **closed** | — |
 | [0003](./issues/0003.md) | Data model: relational schema for workspaces, groups, folders, pages, attachments, RBAC | `grilling` | **closed** | — |
 | [0004](./issues/0004.md) | Real-time layer: Hocuspocus + Yjs persistence, auth hooks, update strategy | `research` | **closed** | — |
@@ -16,11 +16,11 @@ The canonical artifact is **[0001 — the map](./issues/0001.md)**.
 | [0007](./issues/0007.md) | Attachments: storage provider, quotas, access control, upload flow | `grilling` | **closed** | — |
 | [0008](./issues/0008.md) | Search: Postgres FTS mechanics, freshness, cmd+K scope | `grilling` | **closed** | — |
 | [0009](./issues/0009.md) | Monorepo & project structure: packages, apps, tooling, env config | `grilling` | **closed** | — |
-| [0010](./issues/0010.md) | Realtime authorization: gating Hocuspocus connections & doc loads | `grilling` | open | — *(unblocked)* |
+| [0010](./issues/0010.md) | Realtime authorization: gating Hocuspocus connections & doc loads | `grilling` | **closed** | — |
 
 ## Frontier (open, unblocked, unclaimed)
 
-- **0010** Realtime authorization *(the last open ticket)*
+**_(empty — the map is fully resolved; the way to the destination is clear)_**
 
 > All remaining tickets are unblocked — **no blockers left on the map.**
 
