@@ -25,6 +25,7 @@ import { BlockNoteView } from "@blocknote/shadcn";
 import { useCreateBlockNote } from "@blocknote/react";
 import { withCollaboration } from "@blocknote/core/yjs";
 import { buildEditorSchema } from "./custom-blocks";
+import { uploadAttachment } from "./upload";
 // BlockNote's CSS — pulls in the editor + shadcn theme.
 import "@blocknote/core/fonts/inter.css";
 import "@blocknote/shadcn/style.css";
@@ -99,6 +100,13 @@ export default function OpenNoteEditor({
     provider?.awareness
       ? withCollaboration({
           schema,
+          // BlockNote's default image block calls uploadFile when a user
+          // drags/pastes an image. Wire it to the same presigned-upload flow as
+          // file blocks (permission gate + S3 + HEAD-verify + signed-GET URL).
+          uploadFile: async (file) => {
+            const result = await uploadAttachment(pageId, file);
+            return result?.url ?? "";
+          },
           collaboration: {
             provider: { awareness: provider.awareness },
             fragment: doc.getXmlFragment("document-store"),
@@ -142,53 +150,24 @@ export default function OpenNoteEditor({
     const file = e.target.files?.[0];
     e.target.value = ""; // reset so the same file can be picked again
     if (!file) return;
-    try {
-      // 1. request presigned PUT
-      const req = await fetch(`/api/pages/${pageId}/attachments`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          filename: file.name,
-          mimeType: file.type || "application/octet-stream",
-          sizeBytes: file.size,
-        }),
-      });
-      if (!req.ok) return;
-      const { attachmentId, uploadUrl } = (await req.json()) as {
-        attachmentId: string;
-        uploadUrl: string;
-      };
-      // 2. upload bytes direct to S3
-      const put = await fetch(uploadUrl, {
-        method: "PUT",
-        headers: { "Content-Type": file.type || "application/octet-stream" },
-        body: file,
-      });
-      if (!put.ok) return;
-      // 3. complete (HEAD-verify + activate)
-      const complete = await fetch(`/api/attachments/${attachmentId}/complete`, {
-        method: "POST",
-      });
-      if (!complete.ok) return;
-      // 4. insert the file block referencing the attachment
-      editor.insertBlocks(
-        [
-          {
-            type: "file",
-            props: {
-              attachmentId,
-              filename: file.name,
-              mimeType: file.type || "application/octet-stream",
-              sizeBytes: file.size,
-            },
+    // Shared presigned-upload flow → insert a file block referencing the attachment.
+    const result = await uploadAttachment(pageId, file);
+    if (!result) return;
+    editor.insertBlocks(
+      [
+        {
+          type: "file",
+          props: {
+            attachmentId: result.attachmentId,
+            filename: file.name,
+            mimeType: file.type || "application/octet-stream",
+            sizeBytes: file.size,
           },
-        ],
-        editor.getTextCursorPosition().block,
-        "after",
-      );
-    } catch {
-      // failed upload is a no-op for v1
-    }
+        },
+      ],
+      editor.getTextCursorPosition().block,
+      "after",
+    );
   };
 
   return (
