@@ -14,6 +14,7 @@ import {
   getPage,
   listFolderChildren,
   upsertPageDocState,
+  PrismaClient,
 } from "@opennote/db";
 import {
   createPermissionEngine,
@@ -22,7 +23,9 @@ import {
 } from "@opennote/auth";
 import { createS3Service, createSmtpService } from "@opennote/storage";
 
-export const db = prisma;
+// Annotated with the exported type so TS can name it portably (the inferred
+// type reaches into the Prisma generated runtime, which isn't importable here).
+export const db: PrismaClient = prisma;
 
 export const auth = createBetterAuth({ prisma, env });
 

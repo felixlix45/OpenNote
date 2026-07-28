@@ -72,7 +72,7 @@ export async function acceptInvite(
   prisma: PrismaClient,
   input: AcceptInviteInput,
 ): Promise<AcceptInviteResult> {
-  return prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+  return prisma.$transaction(async (tx: Prisma.TransactionClient): Promise<AcceptInviteResult> => {
     // Look up by token. We don't reveal whether the token exists vs. is
     // expired vs. already accepted to the caller uniformly — they get a
     // generic reason for logging but the public message is "invalid".
