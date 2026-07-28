@@ -1,19 +1,22 @@
 /**
- * apps/web — page editor surface (the spine milestone's UI).
+ * apps/web — page route that mounts the BlockNote editor (ticket 0005).
  *
- * Non-realtime first cut: loads the page metadata + body, renders a minimal
- * editor (title + body textarea), saves on debounce. Realtime collaboration
- * (Hocuspocus, ticket 0004) + the BlockNote block editor (ticket 0005) layer
- * on top of this proven save path next.
- *
- * This route is deliberately simple to prove the spine: auth → permission
- * engine → data model → editor surface → save. The auth + permission gates
- * live in the route handlers; this component only renders what the API returns.
+ * Loads the page metadata + Y-doc snapshot via the permission-gated API, then
+ * mounts {@link OpenNoteEditor} dynamically (BlockNote is client-only — can't
+ * SSR). The editor connects to the realtime server for live collaboration; the
+ * snapshot is just for fast first paint.
  */
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
+import dynamic from "next/dynamic";
+
+// BlockNote touches the DOM/ProseMirror — load the editor client-side only.
+const OpenNoteEditor = dynamic(() => import("@/components/editor/OpenNoteEditor"), {
+  ssr: false,
+  loading: () => <p style={{ color: "var(--muted)" }}>Loading editor…</p>,
+});
 
 interface PageData {
   page: {
@@ -30,9 +33,8 @@ export default function PageEditor() {
   const params = useParams<{ pageId: string }>();
   const [data, setData] = useState<PageData["page"] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
-  const [body, setBody] = useState("");
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [titleSaving, setTitleSaving] = useState(false);
+  const [title, setTitle] = useState("");
 
   useEffect(() => {
     fetch(`/api/pages/${params.pageId}`)
@@ -42,35 +44,28 @@ export default function PageEditor() {
       })
       .then((d) => {
         setData(d.page);
-        // For the spine, the "body" is the decoded text content of the Y-doc.
-        // The BlockNote integration (ticket 0005) replaces this with a proper
-        // block editor; the save path stays the same.
-        setBody(d.page.title);
+        setTitle(d.page.title);
       })
       .catch((e) => setError(String(e)));
   }, [params.pageId]);
 
-  const save = (nextTitle: string) => {
-    if (!data?.canWrite) return;
-    setSaving(true);
-    fetch(`/api/pages/${params.pageId}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title: nextTitle }),
-    })
-      .then(() => setSaving(false))
-      .catch(() => setSaving(false));
-  };
-
+  // Title save (debounced). The body is persisted via the realtime server
+  // (Y-doc → page_docs.state); the title is a denormalized mirror refreshed
+  // from the doc, but a user can also set it directly here.
   useEffect(() => {
-    if (!data) return;
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => save(body), 1000);
-    return () => {
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [body]);
+    if (!data || title === data.title) return;
+    setTitleSaving(true);
+    const id = setTimeout(() => {
+      fetch(`/api/pages/${params.pageId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title }),
+      })
+        .then(() => setTitleSaving(false))
+        .catch(() => setTitleSaving(false));
+    }, 1000);
+    return () => clearTimeout(id);
+  }, [title, data, params.pageId]);
 
   if (error) {
     return (
@@ -91,14 +86,17 @@ export default function PageEditor() {
     );
   }
 
+  const realtimeWsUrl =
+    process.env.NEXT_PUBLIC_REALTIME_WS_URL ?? "/collab";
+
   return (
     <main style={{ maxWidth: 720, margin: "0 auto", padding: "2rem 1.5rem" }}>
       <div style={{ marginBottom: "0.5rem", color: "var(--muted)", fontSize: 13 }}>
-        {saving ? "Saving…" : "Saved"} · {data.canWrite ? "Editor" : "Reader"}
+        {titleSaving ? "Saving title…" : "Saved"} · {data.canWrite ? "Editor" : "Reader"}
       </div>
       <input
-        value={body}
-        onChange={(e) => setBody(e.target.value)}
+        value={title}
+        onChange={(e) => setTitle(e.target.value)}
         readOnly={!data.canWrite}
         placeholder="Untitled"
         style={{
@@ -113,16 +111,14 @@ export default function PageEditor() {
           marginBottom: "1rem",
         }}
       />
-      <div
-        style={{
-          borderTop: "1px solid var(--border)",
-          paddingTop: "1rem",
-          color: "var(--muted)",
-          minHeight: 200,
-        }}
-      >
-        The block editor (BlockNote, ticket 0005) renders here next. The save
-        path above already flows through the permission engine and data model.
+      <div style={{ borderTop: "1px solid var(--border)", paddingTop: "1rem" }}>
+        <OpenNoteEditor
+          pageId={data.id}
+          workspaceId={data.workspaceId}
+          docStateBase64={data.docStateBase64}
+          editable={data.canWrite}
+          realtimeWsUrl={realtimeWsUrl}
+        />
       </div>
     </main>
   );
