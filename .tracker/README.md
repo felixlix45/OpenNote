@@ -9,7 +9,7 @@ The canonical artifact is **[0001 — the map](./issues/0001.md)**.
 |----|-------|------|--------|------------|
 | [0001](./issues/0001.md) | **MAP** — OpenNote v1 build-ready spec | `wayfinder:map` | open | — |
 | [0002](./issues/0002.md) | Permission & sharing model: inheritance, roles, groups, overrides | `grilling` | **closed** | — |
-| [0003](./issues/0003.md) | Data model: relational schema for workspaces, groups, folders, pages, attachments, RBAC | `grilling` | open | — *(unblocked)* |
+| [0003](./issues/0003.md) | Data model: relational schema for workspaces, groups, folders, pages, attachments, RBAC | `grilling` | **closed** | — |
 | [0004](./issues/0004.md) | Real-time layer: Hocuspocus + Yjs persistence, auth hooks, update strategy | `research` | **closed** | — |
 | [0005](./issues/0005.md) | Block editor scope: v1 block types, nested-page blocks, slash menu | `grilling` | open | — |
 | [0006](./issues/0006.md) | Auth: library choice (Lucia vs Auth.js), identity scope, workspace onboarding | `grilling` | open | — |
@@ -20,14 +20,14 @@ The canonical artifact is **[0001 — the map](./issues/0001.md)**.
 
 ## Frontier (open, unblocked, unclaimed)
 
-- **0003** Data model *(unblocked by 0002 — high leverage)*
 - **0005** Block editor scope
 - **0006** Auth: library choice
-- **0007** Attachments *(unblocked by 0002)*
+- **0007** Attachments
+- **0008** Search *(unblocked by 0003)*
 - **0009** Monorepo & project structure
-- **0010** Realtime authorization *(unblocked by 0004)*
+- **0010** Realtime authorization
 
-> 0008 waits on 0003.
+> All remaining tickets are unblocked — **no blockers left on the map.**
 
 ## Conventions
 
