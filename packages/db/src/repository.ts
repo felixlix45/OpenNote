@@ -346,3 +346,30 @@ export async function upsertPageDocState(
     update: { state },
   });
 }
+
+// ---------------------------------------------------------------------------
+// Live-revocation NOTIFY (ticket 0010 decision #3). apps/realtime LISTENs.
+// ---------------------------------------------------------------------------
+
+/**
+ * Notify apps/realtime that permissions may have changed for the named users
+ * and/or pages, so it can close now-stale connections (proactive kill). Call
+ * AFTER the mutating transaction commits. Empty arrays → no-op.
+ *
+ * The NOTIFY is transactional in the helper's own statement; for true
+ * commit-bound semantics, call this from within the mutating transaction (the
+ * notify_perm_change() SQL function fires on its enclosing commit).
+ */
+export async function notifyPermChange(
+  db: PrismaClient,
+  args: { userIds?: string[]; pageIds?: string[] },
+): Promise<void> {
+  const userIds = args.userIds ?? [];
+  const pageIds = args.pageIds ?? [];
+  if (userIds.length === 0 && pageIds.length === 0) return;
+  await db.$executeRawUnsafe(
+    `SELECT notify_perm_change($1::text[], $2::text[])`,
+    userIds,
+    pageIds,
+  );
+}

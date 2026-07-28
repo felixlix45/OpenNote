@@ -15,16 +15,19 @@
     "clean": "rm -rf dist node_modules"
   },
   "dependencies": {
-    "@hocuspocus/server": "^2.13.5",
-    "@hocuspocus/extension-database": "^2.13.5",
+    "@hocuspocus/extension-database": "^4.4.0",
+    "@hocuspocus/server": "^4.4.0",
     "@opennote/auth": "workspace:*",
     "@opennote/config": "workspace:*",
     "@opennote/db": "workspace:*",
-    "@opennote/shared": "workspace:*"
+    "@opennote/shared": "workspace:*",
+    "pg": "^8.13.1",
+    "yjs": "^13.6.31"
   },
   "devDependencies": {
     "@opennote/config": "workspace:*",
     "@types/node": "^22.10.2",
+    "@types/pg": "^8.11.10",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2",
     "vitest": "^2.1.8"
