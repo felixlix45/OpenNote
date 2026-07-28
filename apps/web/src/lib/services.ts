@@ -21,6 +21,9 @@ import {
   createShare,
   listShares,
   deleteShare,
+  createWorkspace,
+  listUserWorkspaces,
+  countWorkspaces,
   notifyPermChange,
   PrismaClient,
 } from "@opennote/db";
@@ -60,6 +63,9 @@ export {
   createShare,
   listShares,
   deleteShare,
+  createWorkspace,
+  listUserWorkspaces,
+  countWorkspaces,
   notifyPermChange,
 };
 export { env };

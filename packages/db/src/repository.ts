@@ -452,6 +452,55 @@ export async function deleteShare(db: PrismaClient, workspaceId: string, shareId
   return db.share.deleteMany({ where: { id: shareId, workspaceId } });
 }
 
+// ---------------------------------------------------------------------------
+// Workspaces (ticket 0006 — provisioning + onboarding).
+// ---------------------------------------------------------------------------
+
+/**
+ * Create a workspace. The creator becomes its Owner. Also creates the
+ * all-members group + the Owner membership (the trigger syncs the group).
+ */
+export async function createWorkspace(
+  db: PrismaClient,
+  args: { name: string; slug: string; ownerId: string },
+) {
+  return db.workspace.create({
+    data: {
+      name: args.name,
+      slug: args.slug,
+      createdById: args.ownerId,
+      ownerId: args.ownerId,
+      members: {
+        create: { userId: args.ownerId, role: "owner" },
+      },
+    },
+    include: { members: true },
+  });
+}
+
+/** List workspaces the user is a member of, with their role in each. */
+export async function listUserWorkspaces(db: PrismaClient, userId: string) {
+  const memberships = await db.workspaceMember.findMany({
+    where: { userId },
+    include: { workspace: { select: { id: true, name: true, slug: true } } },
+  });
+  return memberships.map((m) => ({
+    id: m.workspace.id,
+    name: m.workspace.name,
+    slug: m.workspace.slug,
+    role: m.role,
+  }));
+}
+
+/**
+ * Count total workspaces. Used by the first-user bootstrap: if 0, the signing-up
+ * user is the first on a fresh install → promoted to Owner of the default
+ * "OpenNote" workspace (ticket 0006 §3).
+ */
+export async function countWorkspaces(db: PrismaClient): Promise<number> {
+  return db.workspace.count();
+}
+
 
 // ---------------------------------------------------------------------------
 // Page docs (Y-doc state) — ticket 0004.

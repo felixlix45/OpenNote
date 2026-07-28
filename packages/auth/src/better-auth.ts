@@ -107,11 +107,46 @@ export function createBetterAuth({ prisma, env }: BetterAuthDeps) {
 
     // 🔒 Rate limiting: Better Auth applies per-IP limits on credential endpoints.
     // The apps/web middleware adds per-account limiting on top (HIGH #5
-    // login rate-limiting — per-IP AND per-account).
+    // login rate-limiting — per-IP AND per-account). TODO: commit 7.
     rateLimit: {
       enabled: true,
       window: 10, // seconds
       max: 10, // requests per window per IP
+    },
+
+    // First-user bootstrap (ticket 0006 §3): after a user is created, provision
+    // a workspace. The FIRST user on a fresh install becomes Owner of a default
+    // "OpenNote" workspace; subsequent users get their own personal workspace.
+    // Any authenticated user can also create workspaces via POST /api/workspaces.
+    databaseHooks: {
+      user: {
+        create: {
+          after: async (user) => {
+            const { countWorkspaces, createWorkspace } = await import(
+              "@opennote/db"
+            );
+            const wsCount = await countWorkspaces(prisma);
+            if (wsCount === 0) {
+              // First user → Owner of the default workspace.
+              await createWorkspace(prisma, {
+                name: "OpenNote",
+                slug: "opennote",
+                ownerId: user.id,
+              }).catch(() => {
+                // The seed may have already created it; ignore the slug conflict.
+              });
+            } else {
+              // Subsequent users → a personal workspace.
+              const slug = `user-${user.id.slice(0, 8)}`;
+              await createWorkspace(prisma, {
+                name: `${user.name ?? "My"} Workspace`,
+                slug,
+                ownerId: user.id,
+              }).catch(() => {});
+            }
+          },
+        },
+      },
     },
   });
 }
