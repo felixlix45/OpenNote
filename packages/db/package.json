@@ -1,0 +1,47 @@
+{
+  "name": "@opennote/db",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Prisma schema (source of truth, ticket 0003) + generated client + permission CTE helpers.",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": "./dist/index.js",
+    "./client": "./dist/client.js",
+    "./package.json": "./package.json"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": ["dist", "prisma"],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit -p tsconfig.build.json",
+    "db:generate": "prisma generate",
+    "db:migrate": "prisma migrate dev",
+    "db:migrate:deploy": "prisma migrate deploy",
+    "db:push": "prisma db push",
+    "db:seed": "tsx prisma/seed.ts",
+    "db:studio": "prisma studio",
+    "test": "vitest run --passWithNoTests",
+    "test:watch": "vitest",
+    "clean": "rm -rf dist node_modules src/generated"
+  },
+  "dependencies": {
+    "@opennote/shared": "workspace:*",
+    "@prisma/client": "^5.22.0"
+  },
+  "peerDependencies": {
+    "@opennote/config": "workspace:*"
+  },
+  "devDependencies": {
+    "@opennote/config": "workspace:*",
+    "@types/node": "^22.10.2",
+    "prisma": "^5.22.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
+  }
+}

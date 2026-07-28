@@ -1,0 +1,29 @@
+{
+  "name": "@opennote/ui",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Shared React components: sidebar, cmd+K palette, block components (ticket 0009).",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": "./dist/index.js",
+    "./package.json": "./package.json"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit -p tsconfig.build.json",
+    "clean": "rm -rf dist node_modules"
+  },
+  "peerDependencies": {
+    "react": "^18.3.0 || ^19.0.0",
+    "react-dom": "^18.3.0 || ^19.0.0"
+  },
+  "devDependencies": {
+    "@opennote/config": "workspace:*",
+    "@types/react": "^18.3.12",
+    "typescript": "^5.7.2"
+  }
+}

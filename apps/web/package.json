@@ -1,0 +1,38 @@
+{
+  "name": "@opennote/web",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Next.js app: UI + route handlers + BlockNote editor (ticket 0009).",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "dev": "next dev -p 3000",
+    "build": "next build",
+    "start": "next start -p 3000",
+    "lint": "next lint",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests",
+    "test:watch": "vitest",
+    "clean": "rm -rf .next dist node_modules"
+  },
+  "dependencies": {
+    "@opennote/auth": "workspace:*",
+    "@opennote/config": "workspace:*",
+    "@opennote/db": "workspace:*",
+    "@opennote/shared": "workspace:*",
+    "@opennote/storage": "workspace:*",
+    "@opennote/ui": "workspace:*",
+    "better-auth": "^1.2.0",
+    "next": "^15.1.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "@types/react": "^18.3.17",
+    "@types/react-dom": "^18.3.5",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}
