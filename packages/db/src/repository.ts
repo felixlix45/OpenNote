@@ -93,6 +93,40 @@ export async function listRootFolders(db: PrismaClient, workspaceId: string) {
   });
 }
 
+/**
+ * Resolve a default root folder for a workspace, creating one if the workspace
+ * has no root folders yet. The schema's exactly-one-parent CHECK forbids a
+ * parentless page (a page must live in a folder or under another page), so a
+ * "New page" with no folder context needs a home — this provides it.
+ *
+ * Picks the alphabetically-first existing root folder (stable), else creates a
+ * workspace-named one. The caller has already proven can_write on the workspace
+ * root (the open-workspace rule).
+ */
+export async function getOrCreateDefaultFolder(
+  db: PrismaClient,
+  workspaceId: string,
+  createdById: string,
+) {
+  const existing = await db.folder.findFirst({
+    where: { workspaceId, parentId: null, ...ACTIVE },
+    orderBy: { name: "asc" },
+  });
+  if (existing) return existing;
+  const ws = await db.workspace.findUnique({
+    where: { id: workspaceId },
+    select: { name: true },
+  });
+  return db.folder.create({
+    data: {
+      workspaceId,
+      parentId: null,
+      name: ws?.name ?? "Pages",
+      createdById,
+    },
+  });
+}
+
 export async function listFolderChildren(
   db: PrismaClient,
   workspaceId: string,

@@ -12,7 +12,7 @@
  */
 import { NextResponse } from "next/server";
 import { CreatePageInput } from "@opennote/shared";
-import { db, createPage, listFolderChildren, permissions, env } from "@/lib/services";
+import { db, createPage, listFolderChildren, getOrCreateDefaultFolder, permissions, env } from "@/lib/services";
 import { requireSessionUser, UnauthenticatedError } from "@/lib/session";
 
 export async function POST(request: Request) {
@@ -47,11 +47,17 @@ export async function POST(request: Request) {
   }
 
   try {
+    // The schema's exactly-one-parent CHECK forbids a parentless page: a page
+    // must live in a folder or under another page. folderId null here means
+    // "no folder picked" (the sidebar New page button), so resolve a default
+    // root folder for the workspace (creating one if none exists).
+    const resolvedFolderId =
+      folderId ?? (await getOrCreateDefaultFolder(db, workspaceId, user.id)).id;
     // Through the repository: enforces the exactly-one-parent invariant +
     // the nesting-depth cap (🔒 SECURITY-REVIEW nesting-depth DoS bound).
     const page = await createPage(db, {
       workspaceId,
-      folderId,
+      folderId: resolvedFolderId,
       parentPageId: null, // top-level page via this endpoint
       title,
       createdById: user.id,
