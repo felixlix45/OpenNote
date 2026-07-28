@@ -13,6 +13,8 @@ export interface SessionUser {
   email: string;
   name: string | null;
   emailVerified: boolean;
+  /** Avatar URL (users.avatar_url) — surfaced for the sidebar profile bar. */
+  image: string | null;
 }
 
 export async function getSessionUser(): Promise<SessionUser | null> {
@@ -23,6 +25,7 @@ export async function getSessionUser(): Promise<SessionUser | null> {
     email: session.user.email,
     name: session.user.name ?? null,
     emailVerified: Boolean(session.user.emailVerified),
+    image: (session.user as { image?: string | null }).image ?? null,
   };
 }
 
