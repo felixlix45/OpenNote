@@ -132,22 +132,15 @@ export async function PUT(request: Request, context: RouteContext) {
   if (parsed.data.docStateBase64 !== undefined) {
     const state = Buffer.from(parsed.data.docStateBase64, "base64");
     // Through the repository: enforces the doc-size cap (🔒 DoS bound).
-    await upsertPageDocState(db, page.id, state, env.REALTIME_DOC_MAX_BYTES).catch(
-      (err) => {
-        if (err instanceof Error && err.message.includes("exceeds cap")) {
-          throw new DocTooLargeError();
-        }
-        throw err;
-      },
-    );
+    try {
+      await upsertPageDocState(db, page.id, state, env.REALTIME_DOC_MAX_BYTES);
+    } catch (err) {
+      if (err instanceof Error && err.message.includes("exceeds cap")) {
+        return NextResponse.json({ error: "doc_too_large" }, { status: 413 });
+      }
+      throw err;
+    }
   }
 
   return NextResponse.json({ ok: true });
-}
-
-class DocTooLargeError extends Error {
-  status = 413 as const;
-  constructor() {
-    super("doc_too_large");
-  }
 }
