@@ -54,10 +54,11 @@ export default function OpenNoteEditor({
   editable,
   realtimeWsUrl,
 }: OpenNoteEditorProps) {
-  // One Y-doc + provider per page. Kept in refs so they survive re-renders and
-  // are torn down exactly once on unmount.
+  // One Y-doc + provider per page. Doc is stable across renders; provider is
+  // state (not a ref-only) so useCreateBlockNote re-runs once the provider
+  // exists and collaboration wiring attaches.
   const doc = useMemo(() => new Y.Doc(), []);
-  const providerRef = useRef<HocuspocusProvider | null>(null);
+  const [provider, setProvider] = useState<HocuspocusProvider | null>(null);
   const [connected, setConnected] = useState(false);
 
   // Seed the doc from the REST snapshot for fast first paint, BEFORE the
@@ -79,16 +80,16 @@ export default function OpenNoteEditor({
     // Resolve the WS URL: a relative path (/collab) becomes ws(s)://<current
     // origin>/collab so the cookie + origin match the realtime origin check.
     const url = resolveWsUrl(realtimeWsUrl);
-    const provider = new HocuspocusProvider({
+    const next = new HocuspocusProvider({
       url,
       name: `page:${pageId}`,
       document: doc,
       onStatus: ({ status }) => setConnected(status === "connected"),
     });
-    providerRef.current = provider;
+    setProvider(next);
     return () => {
-      provider.destroy();
-      providerRef.current = null;
+      next.destroy();
+      setProvider(null);
     };
   }, [pageId, doc, realtimeWsUrl]);
 
@@ -97,7 +98,6 @@ export default function OpenNoteEditor({
   // `{ awareness: YjsAwareness }` — we pass the Hocuspocus provider's awareness
   // directly (it relays cursor state). The fragment is the named XML slot
   // BlockNote stores blocks in; `user` drives cursor labels.
-  const provider = providerRef.current;
   const schema = useMemo(() => buildEditorSchema(), []);
   const editor = useCreateBlockNote(
     provider?.awareness
@@ -118,7 +118,7 @@ export default function OpenNoteEditor({
           },
         })
       : { schema },
-    [provider, schema],
+    [provider, schema, pageId, doc],
   );
 
   // Insert a sub-page: backend creates the pages row with parent_page_id (the
