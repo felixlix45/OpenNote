@@ -94,18 +94,20 @@ async function seedFixture(
   // The all-members group MUST be created BEFORE members are inserted: the
   // keep_all_members_in_sync trigger adds non-guest members to it on insert,
   // but only if the group already exists (else it no-ops). Order matters.
-  const allMembers = await db.group.upsert({
-    where: {
-      workspaceId_isAllMembers: { workspaceId: f.workspaceId, isAllMembers: true },
-    },
-    update: {},
-    create: {
-      id: f.allMembersGroupId,
-      workspaceId: f.workspaceId,
-      name: "All Members",
-      isAllMembers: true,
-    },
+  // Partial unique index (not Prisma @@unique) → findFirst + create.
+  let allMembers = await db.group.findFirst({
+    where: { workspaceId: f.workspaceId, isAllMembers: true },
   });
+  if (!allMembers) {
+    allMembers = await db.group.create({
+      data: {
+        id: f.allMembersGroupId,
+        workspaceId: f.workspaceId,
+        name: "All Members",
+        isAllMembers: true,
+      },
+    });
+  }
   const group = await db.group.upsert({
     where: { id: f.groupId },
     update: {},

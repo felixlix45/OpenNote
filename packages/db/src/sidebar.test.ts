@@ -68,18 +68,20 @@ async function seedFixture(db: PrismaClient, f: Fixture): Promise<void> {
   });
 
   // all-members group BEFORE members (trigger ordering, see sibling tests).
-  await db.group.upsert({
-    where: {
-      workspaceId_isAllMembers: { workspaceId: f.workspaceId, isAllMembers: true },
-    },
-    update: {},
-    create: {
-      id: f.allMembersGroupId,
-      workspaceId: f.workspaceId,
-      name: "All Members",
-      isAllMembers: true,
-    },
+  // Partial unique index (not Prisma @@unique) → findFirst + create.
+  const existingAllMembers = await db.group.findFirst({
+    where: { workspaceId: f.workspaceId, isAllMembers: true },
   });
+  if (!existingAllMembers) {
+    await db.group.create({
+      data: {
+        id: f.allMembersGroupId,
+        workspaceId: f.workspaceId,
+        name: "All Members",
+        isAllMembers: true,
+      },
+    });
+  }
 
   for (const [uid, role] of [
     [f.ownerId, "owner"],

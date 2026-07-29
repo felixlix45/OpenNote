@@ -193,7 +193,10 @@ model Group {
   shares       Share[]
 
   @@unique([workspaceId, name])
-  @@unique([workspaceId, isAllMembers])
+  // One all-members sentinel per workspace is enforced as a PARTIAL unique
+  // index in sql/constraints.sql (`WHERE is_all_members = true`). A full
+  // @@unique([workspaceId, isAllMembers]) would also cap non-sentinel groups
+  // at one per workspace (boolean unique ⇒ only two rows total).
   @@map("groups")
 }
 

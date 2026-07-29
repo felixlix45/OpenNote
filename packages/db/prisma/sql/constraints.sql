@@ -49,3 +49,46 @@ ALTER TABLE pages
       to_tsvector('simple', coalesce(body_text, ''))
     ) STORED;
 CREATE INDEX IF NOT EXISTS pages_search_idx ON pages USING gin(search_tsv);
+
+-- Groups: exactly one all-members sentinel per workspace (ticket 0003).
+-- Drop the mistaken full unique on (workspace_id, is_all_members) if present —
+-- that constraint also forbade more than one custom (is_all_members=false) group.
+ALTER TABLE groups DROP CONSTRAINT IF EXISTS groups_workspace_id_is_all_members_key;
+DROP INDEX IF EXISTS groups_workspace_id_is_all_members_key;
+CREATE UNIQUE INDEX IF NOT EXISTS groups_one_all_members_per_ws
+  ON groups (workspace_id) WHERE is_all_members = true;
+
+-- Shares: structural tenant binding for polymorphic resource_id (🔒 HIGH #1).
+-- App-layer assertResourceInWorkspace is still required; this trigger is the
+-- DB backstop so a missed filter cannot insert a cross-workspace share.
+CREATE OR REPLACE FUNCTION assert_share_resource_in_workspace()
+RETURNS trigger AS $$
+BEGIN
+  IF NEW.resource_id IS NULL THEN
+    RETURN NEW; -- workspace-root sentinel
+  END IF;
+  IF NEW.resource_type = 'folder' THEN
+    IF NOT EXISTS (
+      SELECT 1 FROM folders
+      WHERE id = NEW.resource_id AND workspace_id = NEW.workspace_id
+    ) THEN
+      RAISE EXCEPTION 'share resource_id not in workspace';
+    END IF;
+  ELSIF NEW.resource_type = 'page' THEN
+    IF NOT EXISTS (
+      SELECT 1 FROM pages
+      WHERE id = NEW.resource_id AND workspace_id = NEW.workspace_id
+    ) THEN
+      RAISE EXCEPTION 'share resource_id not in workspace';
+    END IF;
+  ELSE
+    RAISE EXCEPTION 'unknown share resource_type: %', NEW.resource_type;
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS shares_resource_in_workspace ON shares;
+CREATE TRIGGER shares_resource_in_workspace
+  BEFORE INSERT OR UPDATE OF workspace_id, resource_type, resource_id ON shares
+  FOR EACH ROW EXECUTE FUNCTION assert_share_resource_in_workspace();

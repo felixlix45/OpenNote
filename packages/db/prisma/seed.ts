@@ -85,11 +85,16 @@ async function main() {
   // All-members group — MUST exist before members are inserted so the
   // keep_all_members_in_sync trigger populates group_members for non-guest
   // roles (the trigger no-ops if the group isn't seeded yet).
-  const allMembers = await prisma.group.upsert({
-    where: { workspaceId_isAllMembers: { workspaceId: workspace.id, isAllMembers: true } },
-    update: {},
-    create: { workspaceId: workspace.id, name: "All Members", isAllMembers: true },
+  // Lookup by (workspaceId, isAllMembers=true); uniqueness is a partial index,
+  // not a Prisma @@unique, so upsert-by-compound-name is unavailable.
+  let allMembers = await prisma.group.findFirst({
+    where: { workspaceId: workspace.id, isAllMembers: true },
   });
+  if (!allMembers) {
+    allMembers = await prisma.group.create({
+      data: { workspaceId: workspace.id, name: "All Members", isAllMembers: true },
+    });
+  }
 
   // Owner membership (idempotent). The trigger adds the owner to all-members;
   // the explicit groupMember upsert below is belt-and-suspenders.
