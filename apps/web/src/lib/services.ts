@@ -32,6 +32,7 @@ import {
   listUserWorkspaces,
   countWorkspaces,
   notifyPermChange,
+  resolveShareNotifyTargets,
   PrismaClient,
 } from "@opennote/db";
 import {
@@ -81,5 +82,6 @@ export {
   listUserWorkspaces,
   countWorkspaces,
   notifyPermChange,
+  resolveShareNotifyTargets,
 };
 export { env };

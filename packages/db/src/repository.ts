@@ -132,7 +132,11 @@ export async function listFolderChildren(
   workspaceId: string,
   folderId: string | null,
 ) {
-  // folderId === null → workspace root's direct children.
+  // Soft-delete + tenant scoped only — NOT per-child permission-scoped.
+  // Callers MUST gate with can_read on the parent first. Under the union
+  // inheritance rule a readable parent implies descendant visibility, so
+  // returning all active children is correct *after* that gate. For
+  // per-node scoping (sidebar / guests), use listVisibleTree instead.
   const [folders, pages] = await Promise.all([
     db.folder.findMany({
       where: { workspaceId, parentId: folderId, ...ACTIVE },
@@ -484,6 +488,46 @@ export async function listShares(
 /** Delete a share by id (workspace-scoped — HIGH #1). */
 export async function deleteShare(db: PrismaClient, workspaceId: string, shareId: string) {
   return db.share.deleteMany({ where: { id: shareId, workspaceId } });
+}
+
+/** User ids currently in a group (live membership for notify targets). */
+export async function listGroupMemberUserIds(
+  db: PrismaClient,
+  groupId: string,
+): Promise<string[]> {
+  const rows = await db.groupMember.findMany({
+    where: { groupId },
+    select: { userId: true },
+  });
+  return rows.map((r) => r.userId);
+}
+
+/**
+ * Resolve notifyPermChange targets for a share create/delete so realtime
+ * live-revocation fires for both user and group principals.
+ *
+ * - User principal → that userId
+ * - Group principal → every current group member (empty group → no-op notify)
+ * - Page resource → also include pageId for precise doc kill
+ */
+export async function resolveShareNotifyTargets(
+  db: PrismaClient,
+  share: {
+    principalUserId: string | null;
+    principalGroupId: string | null;
+    resourceType: string;
+    resourceId: string | null;
+  },
+): Promise<{ userIds: string[]; pageIds: string[] }> {
+  let userIds: string[] = [];
+  if (share.principalUserId) {
+    userIds = [share.principalUserId];
+  } else if (share.principalGroupId) {
+    userIds = await listGroupMemberUserIds(db, share.principalGroupId);
+  }
+  const pageIds =
+    share.resourceType === "page" && share.resourceId ? [share.resourceId] : [];
+  return { userIds, pageIds };
 }
 
 // ---------------------------------------------------------------------------

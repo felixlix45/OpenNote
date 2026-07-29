@@ -13,7 +13,7 @@ import {
   listShares,
   notifyPermChange,
   permissions,
-  env,
+  resolveShareNotifyTargets,
 } from "@/lib/services";
 import { requireSessionUser, UnauthenticatedError } from "@/lib/session";
 
@@ -59,10 +59,9 @@ export async function POST(request: Request) {
       level,
       createdById: user.id,
     });
-    // Trigger live revocation so any affected connections re-check on reconnect.
-    await notifyPermChange(db, {
-      userIds: principalUserId ? [principalUserId] : [],
-    });
+    // Live revocation for user AND group principals (group → expand members).
+    const targets = await resolveShareNotifyTargets(db, share);
+    await notifyPermChange(db, targets);
     return NextResponse.json({ share }, { status: 201 });
   } catch (err) {
     if (err instanceof Error && err.message.includes("not found in workspace")) {
@@ -104,6 +103,5 @@ export async function GET(request: Request) {
   }
 
   const shares = await listShares(db, workspaceId, resourceType, resourceId);
-  void env;
   return NextResponse.json({ shares });
 }

@@ -5,7 +5,13 @@
  * principal's connections close (live revocation, ticket 0010 #3).
  */
 import { NextResponse } from "next/server";
-import { db, deleteShare, notifyPermChange, permissions } from "@/lib/services";
+import {
+  db,
+  deleteShare,
+  notifyPermChange,
+  permissions,
+  resolveShareNotifyTargets,
+} from "@/lib/services";
 import { requireSessionUser, UnauthenticatedError } from "@/lib/session";
 
 interface RouteContext {
@@ -43,12 +49,10 @@ export async function DELETE(_request: Request, context: RouteContext) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
 
+  // Resolve notify targets BEFORE delete (group membership still readable).
+  const targets = await resolveShareNotifyTargets(db, share);
   await deleteShare(db, share.workspaceId, shareId);
-
-  // Trigger live revocation for the affected principal.
-  await notifyPermChange(db, {
-    userIds: share.principalUserId ? [share.principalUserId] : [],
-  });
+  await notifyPermChange(db, targets);
 
   return NextResponse.json({ ok: true });
 }
