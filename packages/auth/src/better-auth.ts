@@ -106,8 +106,8 @@ export function createBetterAuth({ prisma, env }: BetterAuthDeps) {
     },
 
     // 🔒 Rate limiting: Better Auth applies per-IP limits on credential endpoints.
-    // The apps/web middleware adds per-account limiting on top (HIGH #5
-    // login rate-limiting — per-IP AND per-account). TODO: commit 7.
+    // apps/web middleware adds per-account (per-email) limiting on top
+    // (SECURITY-REVIEW: per-IP AND per-account).
     rateLimit: {
       enabled: true,
       window: 10, // seconds

@@ -35,4 +35,11 @@ describe("invite tokens — cryptographic guarantees (HIGH #5)", () => {
   it("INVITE_TTL_MS is 7 days", () => {
     expect(INVITE_TTL_MS).toBe(7 * 24 * 60 * 60 * 1000);
   });
+
+  it("safeEqualToken is true for identical tokens and false otherwise", () => {
+    const token = generateInviteToken();
+    expect(safeEqualToken(token, token)).toBe(true);
+    expect(safeEqualToken(token, generateInviteToken())).toBe(false);
+    expect(safeEqualToken(token, token.slice(0, -1))).toBe(false);
+  });
 });

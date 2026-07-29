@@ -10,7 +10,7 @@
  * — the accepting user's email must equal the invite's email AND the account
  * must be email-verified (or verification is forced at accept time).
  */
-import { randomUUID, randomBytes } from "node:crypto";
+import { randomUUID, randomBytes, timingSafeEqual } from "node:crypto";
 import { Prisma, type PrismaClient } from "@opennote/db";
 
 /** Invite-token lifetime: 7 days (ticket 0006). */
@@ -28,6 +28,17 @@ export function generateInviteToken(): string {
   const salt = randomUUID();
   const secret = randomBytes(32).toString("hex");
   return `${salt}.${secret}`;
+}
+
+/**
+ * Constant-time string equality for invite tokens (🔒 HIGH #5).
+ * Length mismatch returns false without leaking which bytes differed.
+ */
+export function safeEqualToken(a: string, b: string): boolean {
+  const bufA = Buffer.from(a, "utf8");
+  const bufB = Buffer.from(b, "utf8");
+  if (bufA.length !== bufB.length) return false;
+  return timingSafeEqual(bufA, bufB);
 }
 
 export interface AcceptInviteInput {
