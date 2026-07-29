@@ -6,27 +6,60 @@
  * attachments ticket (0007) lands.
  *
  * Trash purge (ticket 0003): folders/pages with deleted_at older than
- * TRASH_RETENTION_DAYS are hard-deleted. Runs once per hour.
+ * TRASH_RETENTION_DAYS are hard-deleted. Attachment S3 objects are deleted
+ * before the DB rows cascade away. Runs once per hour.
  */
 import { loadEnv } from "@opennote/config/env";
 import { prisma } from "@opennote/db";
+import { createS3Service } from "@opennote/storage";
 
 const env = loadEnv(process.env);
+const s3 = createS3Service(env);
 
 const PURGE_INTERVAL_MS = 60 * 60 * 1000; // hourly
 
 async function purgeTrash() {
-  const cutoff = new Date(Date.now() - env.TRASH_RETENTION_DAYS * 24 * 60 * 60 * 1000);
-  const folders = await prisma.folder.deleteMany({
-    where: { deletedAt: { lt: cutoff } },
-  });
-  const pages = await prisma.page.deleteMany({
-    where: { deletedAt: { lt: cutoff } },
-  });
-  if (folders.count || pages.count) {
-    console.log(
-      `[worker] purged ${folders.count} folders, ${pages.count} pages older than ${env.TRASH_RETENTION_DAYS}d`,
+  try {
+    const cutoff = new Date(
+      Date.now() - env.TRASH_RETENTION_DAYS * 24 * 60 * 60 * 1000,
     );
+
+    // Collect S3 keys before hard-delete cascades away attachment rows.
+    const pagesToPurge = await prisma.page.findMany({
+      where: { deletedAt: { lt: cutoff } },
+      select: {
+        id: true,
+        attachments: { select: { s3Key: true } },
+      },
+    });
+
+    let s3Deleted = 0;
+    for (const page of pagesToPurge) {
+      for (const att of page.attachments) {
+        try {
+          await s3.deleteObject(att.s3Key);
+          s3Deleted += 1;
+        } catch (err) {
+          console.error(`[worker] failed to delete s3 object ${att.s3Key}:`, err);
+        }
+      }
+    }
+
+    // Pages first (attachments cascade from pages), then folders.
+    const pages = await prisma.page.deleteMany({
+      where: { deletedAt: { lt: cutoff } },
+    });
+    const folders = await prisma.folder.deleteMany({
+      where: { deletedAt: { lt: cutoff } },
+    });
+
+    if (folders.count || pages.count || s3Deleted) {
+      console.log(
+        `[worker] purged ${folders.count} folders, ${pages.count} pages, ${s3Deleted} s3 objects older than ${env.TRASH_RETENTION_DAYS}d`,
+      );
+    }
+  } catch (err) {
+    console.error("[worker] purgeTrash failed:", err);
   }
 }
 
@@ -35,7 +68,9 @@ console.log(
 );
 
 await purgeTrash();
-setInterval(purgeTrash, PURGE_INTERVAL_MS);
+setInterval(() => {
+  void purgeTrash();
+}, PURGE_INTERVAL_MS);
 
 for (const signal of ["SIGTERM", "SIGINT"] as const) {
   process.on(signal, async () => {

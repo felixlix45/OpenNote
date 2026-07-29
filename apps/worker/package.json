@@ -14,7 +14,8 @@
   },
   "dependencies": {
     "@opennote/config": "workspace:*",
-    "@opennote/db": "workspace:*"
+    "@opennote/db": "workspace:*",
+    "@opennote/storage": "workspace:*"
   },
   "devDependencies": {
     "@opennote/config": "workspace:*",

@@ -142,6 +142,9 @@ importers:
       '@opennote/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@opennote/storage':
+        specifier: workspace:*
+        version: link:../../packages/storage
     devDependencies:
       '@types/node':
         specifier: ^22.10.2
