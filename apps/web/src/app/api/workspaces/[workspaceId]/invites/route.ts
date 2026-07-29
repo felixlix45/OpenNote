@@ -9,7 +9,6 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import {
   db,
-  permissions,
   smtp,
   env,
 } from "@/lib/services";
@@ -54,7 +53,11 @@ export async function GET(_request: Request, context: RouteContext) {
     where: { workspaceId },
     orderBy: { createdAt: "desc" },
   });
-  return NextResponse.json({ invites });
+  // Omit tokens from list responses — reduce leak surface if an admin session
+  // or response log is compromised. Token is returned once on POST create.
+  return NextResponse.json({
+    invites: invites.map(({ token: _token, ...rest }) => rest),
+  });
 }
 
 export async function POST(request: Request, context: RouteContext) {
